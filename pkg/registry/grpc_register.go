@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iconnor-code/cogo/pkg/config"
 	"github.com/iconnor-code/cogo/pkg/cerr"
+	"github.com/iconnor-code/cogo/pkg/config"
+	"github.com/iconnor-code/cogo/pkg/etcd"
 	"github.com/iconnor-code/cogo/pkg/logger"
 	"github.com/iconnor-code/cogo/pkg/utils"
 
@@ -16,10 +17,12 @@ import (
 	"go.uber.org/zap"
 )
 
+type GrpcRegisterOption func(*GrpcRegister)
+
 type GrpcRegister struct {
 	config   *config.Conf
 	logger   *logger.Logger
-	etcd     *clientv3.Client
+	etcd     *etcd.EtcdClient
 	manager  endpoints.Manager
 	leaseTTL int64
 
@@ -28,15 +31,8 @@ type GrpcRegister struct {
 	registryKey string
 }
 
-func NewGrpcRegister(config *config.Conf, logger *logger.Logger) (*GrpcRegister, error) {
-	etcd, err := clientv3.New(clientv3.Config{
-		Endpoints: config.Etcd.Endpoints,
-	})
-	if err != nil {
-		return nil, cerr.WithStack(err)
-	}
-
-	manager, err := endpoints.NewManager(etcd, config.Registry.Key)
+func NewGrpcRegister(config *config.Conf, logger *logger.Logger, etcd *etcd.EtcdClient, opts ...GrpcRegisterOption) (*GrpcRegister, error) {
+	manager, err := endpoints.NewManager(etcd.Client, fmt.Sprintf("%d", config.ServerID))
 	if err != nil {
 		return nil, cerr.WithStack(err)
 	}
@@ -47,9 +43,18 @@ func NewGrpcRegister(config *config.Conf, logger *logger.Logger) (*GrpcRegister,
 		etcd:        etcd,
 		manager:     manager,
 		leaseTTL:    3,
-		registryKey: config.Registry.Key,
+		registryKey: fmt.Sprintf("%d", config.ServerID),
+	}
+	for _, opt := range opts {
+		opt(registry)
 	}
 	return registry, nil
+}
+
+func WithLeaseTTL(ttl int64) GrpcRegisterOption {
+	return func(r *GrpcRegister) {
+		r.leaseTTL = ttl
+	}
 }
 
 func (r *GrpcRegister) Register(ctx context.Context) error {
@@ -67,7 +72,7 @@ func (r *GrpcRegister) Register(ctx context.Context) error {
 		}
 	}
 
-	r.registryKey = fmt.Sprintf("%s/%s:%s", r.config.Registry.Key, hostName, hostPort)
+	r.registryKey = fmt.Sprintf("%s/%s:%s", r.registryKey, hostName, hostPort)
 	value := fmt.Sprintf("%s:%s", hostName, hostPort)
 
 	lease, err := r.etcd.Grant(ctx, r.leaseTTL)

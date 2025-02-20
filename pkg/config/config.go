@@ -8,18 +8,18 @@ import (
 )
 
 type Conf struct {
-	Mode      string         `mapstructure:"mode"`
-	BizID     int32          `mapstructure:"biz_id"`
-	Grpc      GrpcConfig     `mapstructure:"grpc"`
-	Log       LogConfig      `mapstructure:"log"`
-	HttpProxy HttpConfig     `mapstructure:"http_proxy"`
-	Metrics   MetricsConfig  `mapstructure:"metrics"`
-	Mysql     MysqlConfig    `mapstructure:"mysql"`
-	Redis     RedisConfig    `mapstructure:"redis"`
-	Smtp      SmtpConfig     `mapstructure:"smtp"`
-	JwtToken  JwtTokenConfig `mapstructure:"jwt_token"`
-	Etcd      EtcdConfig     `mapstructure:"etcd"`
-	Registry  RegistryConfig `mapstructure:"registry"`
+	Mode     string         `mapstructure:"mode"`
+	ServerID uint8          `mapstructure:"server_id"`
+	Grpc     GrpcConfig     `mapstructure:"grpc"`
+	Log      LogConfig      `mapstructure:"log"`
+	Http     HttpConfig     `mapstructure:"http"`
+	Metrics  MetricsConfig  `mapstructure:"metrics"`
+	Mysql    MysqlConfig    `mapstructure:"mysql"`
+	Redis    RedisConfig    `mapstructure:"redis"`
+	Smtp     SmtpConfig     `mapstructure:"smtp"`
+	JwtToken JwtTokenConfig `mapstructure:"jwt_token"`
+	Etcd     EtcdConfig     `mapstructure:"etcd"`
+	Registry RegistryConfig `mapstructure:"registry"`
 }
 
 type EtcdConfig struct {
@@ -28,7 +28,6 @@ type EtcdConfig struct {
 
 type RegistryConfig struct {
 	Hostname string `mapstructure:"hostname"`
-	Key      string `mapstructure:"key"`
 }
 
 type GrpcConfig struct {

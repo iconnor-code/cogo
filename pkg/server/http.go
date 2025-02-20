@@ -32,7 +32,7 @@ func (s *HttpServer) Start(handler *runtime.ServeMux) {
 	startHttpServer := func() *http.Server {
 		httpSrv := &http.Server{
 			Handler: handler,
-			Addr:    s.conf.HttpProxy.Listen,
+			Addr:    s.conf.Http.Listen,
 		}
 		s.wg.Add(1)
 		go func() {
@@ -48,21 +48,21 @@ func (s *HttpServer) Start(handler *runtime.ServeMux) {
 	startHttpsServer := func() *http.Server {
 		httpsSrv := &http.Server{
 			Handler: handler,
-			Addr:    s.conf.HttpProxy.Listen,
+			Addr:    s.conf.Http.Listen,
 		}
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
 			s.logger.Log().Info("Https Server Starting", zap.String("listen", httpsSrv.Addr))
-			if err := httpsSrv.ListenAndServeTLS(s.conf.HttpProxy.CertFile, s.conf.HttpProxy.KeyFile); err != nil {
+			if err := httpsSrv.ListenAndServeTLS(s.conf.Http.CertFile, s.conf.Http.KeyFile); err != nil {
 				s.logger.Log().Error("Https Server Error", zap.Error(err))
 			}
 		}()
 		return httpsSrv
 	}
 
-	if s.conf.HttpProxy.SSL {
-		if s.conf.HttpProxy.CertFile == "" || s.conf.HttpProxy.KeyFile == "" {
+	if s.conf.Http.SSL {
+		if s.conf.Http.CertFile == "" || s.conf.Http.KeyFile == "" {
 			s.logger.Log().Fatal("Https Server Error: cert_file or key_file is empty")
 		}
 		s.server = startHttpsServer()
