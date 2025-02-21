@@ -31,7 +31,7 @@ func NewGrpcDiscover(config *config.Conf, etcd *etcd.EtcdClient) (*GrpcDiscover,
 	}, nil
 }
 
-func (g *GrpcDiscover) GetService(serverID uint8) (*grpc.ClientConn, error) {
+func (g *GrpcDiscover) GetServiceConn(serverID uint8) (*grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(fmt.Sprintf("%s/%d", "etcd://", serverID),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithResolvers(g.resolver),

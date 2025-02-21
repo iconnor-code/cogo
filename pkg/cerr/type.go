@@ -22,7 +22,7 @@ func (e *CustomError) WithError(err error) error {
 	return e
 }
 
-func NewCustomError(code int, msg string, err error) *CustomError {
+func newCustomError(code int, msg string, err error) *CustomError {
 	if err != nil {
 		err = errors.WithStack(err)
 	}
@@ -34,15 +34,15 @@ func NewCustomError(code int, msg string, err error) *CustomError {
 }
 
 func NewClientError(msg string, err error) *CustomError {
-	return NewCustomError(ERR_CODE_CLIENT, msg, err)
+	return newCustomError(ERR_CODE_CLIENT, msg, err)
 }
 
 func NewInternalError(msg string, err error) *CustomError {
-	return NewCustomError(ERR_CODE_INTERNAL, msg, err)
+	return newCustomError(ERR_CODE_INTERNAL, msg, err)
 }
 
 func NewExternalError(msg string, err error) *CustomError {
-	return NewCustomError(ERR_CODE_EXTRA, msg, err)
+	return newCustomError(ERR_CODE_EXTRA, msg, err)
 }
 
 // 对错误进行包装，添加堆栈信息
