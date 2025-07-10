@@ -2,88 +2,118 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
-	"sync"
 	"time"
 
-	"github.com/iconnor-code/cogo/pkg/config"
-	"github.com/iconnor-code/cogo/pkg/logger"
+	"github.com/iconnor-code/cogo/cerrs"
+	"github.com/iconnor-code/cogo/core"
+	"go.uber.org/zap"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"go.uber.org/zap"
 )
 
 type HttpServer struct {
-	conf   *config.Conf
-	logger *logger.Logger
-	wg     *sync.WaitGroup
-	server *http.Server
+	conf   map[string]any
+	logger core.ILogger
+	// wg      *sync.WaitGroup
+	handler *runtime.ServeMux
+	server  *http.Server
 }
 
-func NewHttpServer(conf *config.Conf, logger *logger.Logger, wg *sync.WaitGroup) *HttpServer {
-	return &HttpServer{
-		conf:   conf,
-		logger: logger,
-		wg:     wg,
+func WithHttpHandler(handler *runtime.ServeMux) core.ServerOption {
+	return func(s core.IServer) error {
+		server := s.(*HttpServer)
+		server.handler = handler
+		return nil
 	}
 }
 
-func (s *HttpServer) Start(handler *runtime.ServeMux) {
-	startHttpServer := func() *http.Server {
+func WithHttpConfig(conf core.IConfig) core.ServerOption {
+	return func(s core.IServer) error {
+		server := s.(*HttpServer)
+		confMap := conf.Get("http").(map[string]any)
+		if confMap == nil {
+			return cerrs.New("http config is not found")
+		}
+		server.conf = confMap
+		return nil
+	}
+}
+
+func WithHttpLogger(logger core.ILogger) core.ServerOption {
+	return func(s core.IServer) error {
+		s.(*HttpServer).logger = logger
+		return nil
+	}
+}
+
+func NewHttpServer(opts ...core.ServerOption) *HttpServer {
+	s := &HttpServer{}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+func (s *HttpServer) Start() error {
+	startHttpServer := func() (*http.Server, error) {
 		httpSrv := &http.Server{
-			Handler: handler,
-			Addr:    s.conf.Http.Listen,
+			Handler: s.handler,
+			Addr:    s.conf["listen"].(string),
 		}
-		s.wg.Add(1)
 		go func() {
-			defer s.wg.Done()
-			s.logger.Log().Info("Http Server Starting", zap.String("address", httpSrv.Addr))
-			if err := httpSrv.ListenAndServe(); err != nil {
-				s.logger.Log().Error("Http Server Error", zap.Error(err))
+			s.logger.Info("http server start", zap.String("listen", s.conf["listen"].(string)))
+			err := httpSrv.ListenAndServe()
+			if err != nil && err != http.ErrServerClosed {
+				s.logger.Error("http server start failed", zap.Error(err))
 			}
 		}()
-		return httpSrv
+		return httpSrv, nil
 	}
 
-	startHttpsServer := func() *http.Server {
+	startHttpsServer := func(sslConfMap map[string]string) (*http.Server, error) {
 		httpsSrv := &http.Server{
-			Handler: handler,
-			Addr:    s.conf.Http.Listen,
+			Handler: s.handler,
+			Addr:    s.conf["listen"].(string),
 		}
-		s.wg.Add(1)
 		go func() {
-			defer s.wg.Done()
-			s.logger.Log().Info("Https Server Starting", zap.String("listen", httpsSrv.Addr))
-			if err := httpsSrv.ListenAndServeTLS(s.conf.Http.CertFile, s.conf.Http.KeyFile); err != nil {
-				s.logger.Log().Error("Https Server Error", zap.Error(err))
+			s.logger.Info("https server start", zap.String("listen", s.conf["listen"].(string)))
+			err := httpsSrv.ListenAndServeTLS(sslConfMap["cert_file"], sslConfMap["key_file"])
+			if err != nil && err != http.ErrServerClosed {
+				s.logger.Error("https server start failed", zap.Error(err))
 			}
 		}()
-		return httpsSrv
+		return httpsSrv, nil
 	}
 
-	if s.conf.Http.SSL {
-		if s.conf.Http.CertFile == "" || s.conf.Http.KeyFile == "" {
-			s.logger.Log().Fatal("Https Server Error: cert_file or key_file is empty")
+	var err error
+	sslConf, ok := s.conf["ssl"]
+	if ok && sslConf != nil {
+		sslConfMap, ok := sslConf.(map[string]string)
+		if !ok {
+			return cerrs.New(fmt.Sprintf("https ssl config is error: %+v", sslConf))
 		}
-		s.server = startHttpsServer()
+		s.server, err = startHttpsServer(sslConfMap)
+		if err != nil {
+			return err
+		}
 	} else {
-		s.server = startHttpServer()
+		s.server, err = startHttpServer()
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func (s *HttpServer) WaitStop(stopSingal chan struct{}) {
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-
-		<-stopSingal
-
-		ctx, cancel := context.WithTimeout(context.TODO(), time.Second*10)
-		defer cancel()
-
+func (s *HttpServer) Stop() error {
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*5)
+	defer cancel()
+	if s.server != nil {
 		if err := s.server.Shutdown(ctx); err != nil {
-			s.logger.Log().Fatal("Http(s) Server Shutdown Error", zap.Error(err))
+			return err
 		}
-		s.logger.Log().Info("Http(s) Server Exited")
-	}()
+	}
+	return nil
 }

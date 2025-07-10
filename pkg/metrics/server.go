@@ -3,60 +3,62 @@ package metrics
 import (
 	"context"
 	"net/http"
-	"sync"
 	"time"
 
-	"github.com/iconnor-code/cogo/pkg/config"
-	"github.com/iconnor-code/cogo/pkg/logger"
-
+	"github.com/iconnor-code/cogo/core"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 )
 
-type PrometheusServer struct {
-	conf   *config.Conf
-	logger *logger.Logger
-	wg     *sync.WaitGroup
+type MetricsServer struct {
+	conf   core.IConfig
+	logger core.ILogger
 	server *http.Server
 }
 
-func NewPrometheusServer(conf *config.Conf, logger *logger.Logger, wg *sync.WaitGroup) *PrometheusServer {
-	return &PrometheusServer{
-		conf:   conf,
-		logger: logger,
-		wg:     wg,
+func WithMetricsConfig(conf core.IConfig) core.ServerOption {
+	return func(s core.IServer) error {
+		server := s.(*MetricsServer)
+		server.conf = conf
+		return nil
+	}
+}
+func WithMetricsLogger(logger core.ILogger) core.ServerOption {
+	return func(s core.IServer) error {
+		server := s.(*MetricsServer)
+		server.logger = logger
+		return nil
 	}
 }
 
-func (s *PrometheusServer) Start() {
+func NewMetricsServer(opts ...core.ServerOption) (*MetricsServer, error) {
+	s := &MetricsServer{}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s, nil
+}
+
+func (s *MetricsServer) Start() error {
 	httpSrv := &http.Server{
-		Addr:    s.conf.Metrics.Listen,
+		Addr:    s.conf.Get("metrics.listen").(string),
 		Handler: promhttp.Handler(),
 	}
-	s.wg.Add(1)
 	go func() {
-		defer s.wg.Done()
-		s.logger.Log().Info("Prometheus Server Starting", zap.String("address", s.conf.Metrics.Listen))
-		if err := httpSrv.ListenAndServe(); err != nil {
-			s.logger.Log().Error("Prometheus Server Error", zap.Error(err))
+		s.logger.Info("metrics server start", zap.String("listen", s.conf.Get("metrics.listen").(string)))
+		if listenErr := httpSrv.ListenAndServe(); listenErr != nil {
+			s.logger.Error("metrics server start failed", zap.Error(listenErr))
 		}
 	}()
 	s.server = httpSrv
+	return nil
 }
 
-func (s *PrometheusServer) WaitStop(stopSingal chan struct{}) {
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-
-		<-stopSingal
-
-		ctx, cancel := context.WithTimeout(context.TODO(), time.Second*10)
-		defer cancel()
-
-		if err := s.server.Shutdown(ctx); err != nil {
-			s.logger.Log().Fatal("Prometheus Server Shutdown Error", zap.Error(err))
-		}
-		s.logger.Log().Info("Prometheus Server Exited")
-	}()
+func (s *MetricsServer) Stop() error {
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*5)
+	defer cancel()
+	if err := s.server.Shutdown(ctx); err != nil {
+		return err
+	}
+	return nil
 }

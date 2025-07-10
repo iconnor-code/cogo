@@ -8,8 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iconnor-code/cogo/pkg/config"
-	"github.com/iconnor-code/cogo/pkg/logger"
+	"github.com/iconnor-code/cogo/core"
 
 	"crypto/tls"
 
@@ -21,20 +20,20 @@ type EmailSmtp struct {
 	port     int
 	username string
 	password string
-	logger   *logger.Logger
+	logger   core.ILogger
 
-	from string
+	from    string
 	to      []string
 	msg     []byte
 	subject string
 }
 
-func NewSmtp(conf *config.SmtpConfig, logger *logger.Logger) *EmailSmtp {
+func NewSmtp(conf core.IConfig, logger core.ILogger) *EmailSmtp {
 	return &EmailSmtp{
-		host:     conf.Host,
-		port:     conf.Port,
-		username: conf.Username,
-		password: conf.Password,
+		host:     conf.Get("smtp.host").(string),
+		port:     conf.Get("smtp.port").(int),
+		username: conf.Get("smtp.username").(string),
+		password: conf.Get("smtp.password").(string),
 		logger:   logger,
 	}
 }
@@ -70,66 +69,68 @@ func (e *EmailSmtp) sendEmail() {
 	}
 
 	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	e.log()
+
 	if err != nil {
-		e.log().Error("SMTP建立TLS连接失败", zap.Error(err))
+		e.logger.Error("SMTP建立TLS连接失败", zap.Error(err))
 		return
 	}
 	defer conn.Close()
 
 	client, err := smtp.NewClient(conn, e.host)
 	if err != nil {
-		e.log().Error("SMTP创建客户端失败", zap.Error(err))
+		e.logger.Error("SMTP创建客户端失败", zap.Error(err))
 		return
 	}
 	defer client.Close()
 
 	auth := smtp.PlainAuth("", e.username, e.password, e.host)
 	if err = client.Auth(auth); err != nil {
-		e.log().Error("SMTP认证失败", zap.Error(err))
+		e.logger.Error("SMTP认证失败", zap.Error(err))
 		return
 	}
 
 	if err = client.Mail(e.username); err != nil {
-		e.log().Error("SMTP设置发件人失败", zap.Error(err))
+		e.logger.Error("SMTP设置发件人失败", zap.Error(err))
 		return
 	}
 
 	for _, rcptAddr := range e.to {
 		if err = client.Rcpt(rcptAddr); err != nil {
-			e.log().Error("SMTP设置收件人失败", zap.Error(err))
+			e.logger.Error("SMTP设置收件人失败", zap.Error(err))
 			return
 		}
 	}
 
 	w, err := client.Data()
 	if err != nil {
-		e.log().Error("SMTP创建邮件内容写入器失败", zap.Error(err))
+		e.logger.Error("SMTP创建邮件内容写入器失败", zap.Error(err))
 		return
 	}
 
 	_, err = w.Write(e.msg)
 	if err != nil {
-		e.log().Error("SMTP写入邮件内容失败", zap.Error(err))
+		e.logger.Error("SMTP写入邮件内容失败", zap.Error(err))
 		return
 	}
 
 	err = w.Close()
 	if err != nil {
-		e.log().Error("SMTP关闭邮件内容写入器失败", zap.Error(err))
+		e.logger.Error("SMTP关闭邮件内容写入器失败", zap.Error(err))
 		return
 	}
 
 	err = client.Quit()
 	if err != nil {
-		e.log().Error("SMTP关闭连接失败", zap.Error(err))
+		e.logger.Error("SMTP关闭连接失败", zap.Error(err))
 		return
 	}
 
-	e.log().Info("SMTP发送邮件完成")
+	e.logger.Info("SMTP发送邮件完成")
 }
 
-func (e *EmailSmtp) log() *zap.Logger {
-	return e.logger.Log().With(
+func (e *EmailSmtp) log() {
+	e.logger.AddGlobalFields(
 		zap.String("app_name", e.from),
 		zap.String("host", e.host),
 		zap.Int("port", e.port),

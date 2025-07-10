@@ -1,17 +1,11 @@
 package config
 
-import (
-	"log"
-	"path"
+import "github.com/spf13/viper"
 
-	"github.com/spf13/viper"
-)
-
-type Conf struct {
+type ConfigValue struct {
 	Mode     string         `mapstructure:"mode"`
-	ServerID uint8          `mapstructure:"server_id"`
 	Grpc     GrpcConfig     `mapstructure:"grpc"`
-	Log      LogConfig      `mapstructure:"log"`
+	Logger   LogConfig      `mapstructure:"logger"`
 	Http     HttpConfig     `mapstructure:"http"`
 	Metrics  MetricsConfig  `mapstructure:"metrics"`
 	Mysql    MysqlConfig    `mapstructure:"mysql"`
@@ -20,6 +14,10 @@ type Conf struct {
 	JwtToken JwtTokenConfig `mapstructure:"jwt_token"`
 	Etcd     EtcdConfig     `mapstructure:"etcd"`
 	Registry RegistryConfig `mapstructure:"registry"`
+}
+
+func (c *ConfigValue) Get(key string) any {
+	return viper.Get(key)
 }
 
 type EtcdConfig struct {
@@ -35,11 +33,11 @@ type GrpcConfig struct {
 }
 
 type HttpConfig struct {
-	Enable   bool   `mapstructure:"enable"`
-	Listen   string `mapstructure:"listen"`
-	SSL      bool   `mapstructure:"ssl"`
-	CertFile string `mapstructure:"cert_file"`
-	KeyFile  string `mapstructure:"key_file"`
+	Listen string `mapstructure:"listen"`
+	SSL    struct {
+		CertFile string `mapstructure:"cert_file"`
+		KeyFile  string `mapstructure:"key_file"`
+	} `mapstructure:"ssl"`
 }
 type LogConfig struct {
 	Level      int8   `mapstructure:"level"`
@@ -81,35 +79,4 @@ type JwtTokenConfig struct {
 	AccessSecret  string `mapstructure:"access_secret"`
 	AccessExpire  int    `mapstructure:"access_expire"`
 	RefreshExpire int    `mapstructure:"refresh_expire"`
-}
-
-func NewConfig(filepath string) *Conf {
-	return loadConfigFromFile(filepath)
-}
-
-func loadConfigFromFile(filepath string) *Conf {
-	if filepath == "" {
-		return nil
-	}
-
-	dir := path.Dir(filepath)
-	fileNameWithoutExt := path.Base(filepath)
-	ext := path.Ext(filepath)
-	fileNameWithoutExt = fileNameWithoutExt[:len(fileNameWithoutExt)-len(ext)]
-
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(dir)
-	viper.SetConfigName(fileNameWithoutExt)
-
-	if err := viper.ReadInConfig(); err != nil {
-		log.Fatalf("Error reading config file: path:%s, err:%s", filepath, err)
-	}
-
-	conf := &Conf{}
-	err := viper.Unmarshal(conf)
-	if err != nil {
-		log.Fatalf("Unable to decode config file into struct, %v", err)
-	}
-
-	return conf
 }
