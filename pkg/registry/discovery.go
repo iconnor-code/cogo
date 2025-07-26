@@ -2,14 +2,9 @@ package registry
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/iconnor-code/cogo/core"
-	"github.com/iconnor-code/cogo/pkg/cerr"
 	"github.com/iconnor-code/cogo/pkg/etcd"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/balancer/roundrobin"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 type EtcdDiscover struct {
@@ -25,18 +20,6 @@ func NewGrpcDiscover(opts ...core.DiscoveryOption) (*EtcdDiscover, error) {
 		}
 	}
 	return d, nil
-}
-
-func (g *EtcdDiscover) GetGrpcClientConn(serverName string) (any, error) {
-	conn, err := grpc.NewClient(fmt.Sprintf("%s/%d", "etcd://", serverName),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		// grpc.WithResolvers(g.resolver),
-		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingPolicy":"%s"}`, roundrobin.Name)),
-	)
-	if err != nil {
-		return nil, cerr.WithStack(err)
-	}
-	return conn, nil
 }
 
 func WithEtcdDiscoverConfig(config core.IConfig) core.DiscoveryOption {

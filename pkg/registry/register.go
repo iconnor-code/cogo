@@ -3,16 +3,20 @@ package registry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/iconnor-code/cogo/core"
 	"github.com/iconnor-code/cogo/pkg/cerr"
 	"github.com/iconnor-code/cogo/pkg/etcd"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/balancer/roundrobin"
+	"google.golang.org/grpc/credentials/insecure"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-type EtcdRegister struct {
+type KitEtcdDiscovery struct {
 	config      map[string]any
 	etcd        *etcd.EtcdClient
 	leaseTTL    int64
@@ -27,7 +31,7 @@ func WithEtcdRegisterConfig(config core.IConfig) core.RegistryOption {
 		if confMap == nil {
 			return errors.New("registry config is not found")
 		}
-		registry := r.(*EtcdRegister)
+		registry := r.(*KitEtcdDiscovery)
 		registry.config = confMap
 		return nil
 	}
@@ -35,7 +39,7 @@ func WithEtcdRegisterConfig(config core.IConfig) core.RegistryOption {
 
 func WithEtcdRegisterEtcdClient(etcd *etcd.EtcdClient) core.RegistryOption {
 	return func(r core.IRegistry) error {
-		registry := r.(*EtcdRegister)
+		registry := r.(*KitEtcdDiscovery)
 		registry.etcd = etcd
 		return nil
 	}
@@ -43,21 +47,21 @@ func WithEtcdRegisterEtcdClient(etcd *etcd.EtcdClient) core.RegistryOption {
 
 func WithEtcdRegisterLeaseTTL(ttl int64) core.RegistryOption {
 	return func(r core.IRegistry) error {
-		registry := r.(*EtcdRegister)
+		registry := r.(*KitEtcdDiscovery)
 		registry.leaseTTL = ttl
 		return nil
 	}
 }
 
-func NewEtcdRegister(opts ...core.RegistryOption) (*EtcdRegister, error) {
-	registry := &EtcdRegister{}
+func NewEtcdRegister(opts ...core.RegistryOption) (*KitEtcdDiscovery, error) {
+	registry := &KitEtcdDiscovery{}
 	for _, opt := range opts {
 		opt(registry)
 	}
 	return registry, nil
 }
 
-func (r *EtcdRegister) Register(ctx context.Context, serverName string, serverAddr string) error {
+func (r *KitEtcdDiscovery) Register(ctx context.Context, serverName string, serverAddr string) error {
 	r.registryKey = serverName
 	lease, err := r.etcd.Grant(ctx, r.leaseTTL)
 	if err != nil {
@@ -74,7 +78,7 @@ func (r *EtcdRegister) Register(ctx context.Context, serverName string, serverAd
 	return nil
 }
 
-func (r *EtcdRegister) keepAlive(ctx context.Context) error {
+func (r *KitEtcdDiscovery) keepAlive(ctx context.Context) error {
 	var err *error
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -105,7 +109,7 @@ func (r *EtcdRegister) keepAlive(ctx context.Context) error {
 	return *err
 }
 
-func (r *EtcdRegister) Deregister(ctx context.Context, serverName string, serverAddr string) error {
+func (r *KitEtcdDiscovery) DeRegister(ctx context.Context, serverName string, serverAddr string) error {
 	if r.cancel != nil {
 		r.cancel()
 	}
@@ -114,4 +118,16 @@ func (r *EtcdRegister) Deregister(ctx context.Context, serverName string, server
 		return err
 	}
 	return nil
+}
+
+func (r *KitEtcdDiscovery) GetServer(serverName string) (any, error) {
+	conn, err := grpc.NewClient(fmt.Sprintf("%s/%d", "etcd://", serverName),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		// grpc.WithResolvers(g.resolver),
+		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingPolicy":"%s"}`, roundrobin.Name)),
+	)
+	if err != nil {
+		return nil, cerr.WithStack(err)
+	}
+	return conn, nil
 }

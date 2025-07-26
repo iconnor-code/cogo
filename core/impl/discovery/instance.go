@@ -1,15 +1,20 @@
 package discovery
 
-// 服务实例
-type ServiceInstance struct {
-	ID   string
-	Name string
-	Addr string
-	Port int
-	Tags []string
-	Meta map[string]string
+import "fmt"
+
+type ServerInstance struct {
+	ID      string
+	Name    string
+	Address string
+	Port    int
+	Tags    []string
+	Meta    map[string]string
 }
 
-func (si *ServiceInstance) GetName() string {
+func (si *ServerInstance) GetName() string {
 	return si.Name
+}
+
+func (si *ServerInstance) GetAddr() string {
+	return fmt.Sprintf("%v:%v", si.Address, si.Port)
 }

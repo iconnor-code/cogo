@@ -1,3 +1,4 @@
+// Package core core interface
 package core
 
 type ConfigOption func(IConfig) error

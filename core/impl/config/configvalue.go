@@ -1,19 +1,22 @@
+// Package config
 package config
 
 import "github.com/spf13/viper"
 
 type ConfigValue struct {
-	Mode     string         `mapstructure:"mode"`
-	Grpc     GrpcConfig     `mapstructure:"grpc"`
-	Logger   LogConfig      `mapstructure:"logger"`
-	Http     HttpConfig     `mapstructure:"http"`
-	Metrics  MetricsConfig  `mapstructure:"metrics"`
-	Mysql    MysqlConfig    `mapstructure:"mysql"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	Smtp     SmtpConfig     `mapstructure:"smtp"`
-	JwtToken JwtTokenConfig `mapstructure:"jwt_token"`
-	Etcd     EtcdConfig     `mapstructure:"etcd"`
-	Registry RegistryConfig `mapstructure:"registry"`
+	Mode      string          `mapstructure:"mode"`
+	Grpc      GrpcConfig      `mapstructure:"grpc"`
+	Logger    LogConfig       `mapstructure:"logger"`
+	HTTP      HTTPConfig      `mapstructure:"http"`
+	Metrics   MetricsConfig   `mapstructure:"metrics"`
+	Mysql     MysqlConfig     `mapstructure:"mysql"`
+	Redis     RedisConfig     `mapstructure:"redis"`
+	SMTP      SMTPConfig      `mapstructure:"smtp"`
+	JwtToken  JwtTokenConfig  `mapstructure:"jwt_token"`
+	Etcd      EtcdConfig      `mapstructure:"etcd"`
+	Registry  RegistryConfig  `mapstructure:"registry"`
+	Consul    ConsulConfig    `mapstructure:"consul"`
+	Discovery DiscoveryConfig `mapstructure:"discovery"`
 }
 
 func (c *ConfigValue) Get(key string) any {
@@ -32,7 +35,7 @@ type GrpcConfig struct {
 	Listen string `mapstructure:"listen"`
 }
 
-type HttpConfig struct {
+type HTTPConfig struct {
 	Listen string `mapstructure:"listen"`
 	SSL    struct {
 		CertFile string `mapstructure:"cert_file"`
@@ -62,7 +65,7 @@ type MysqlConfig struct {
 	} `mapstructure:"pool"`
 }
 
-type SmtpConfig struct {
+type SMTPConfig struct {
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
 	Username string `mapstructure:"username"`
@@ -79,4 +82,24 @@ type JwtTokenConfig struct {
 	AccessSecret  string `mapstructure:"access_secret"`
 	AccessExpire  int    `mapstructure:"access_expire"`
 	RefreshExpire int    `mapstructure:"refresh_expire"`
+}
+
+type ConsulConfig struct {
+	Address string `mapstructure:"address"`
+}
+
+type DiscoveryConfig struct {
+	ID          string                   `mapstructure:"id"`
+	Name        string                   `mapstructure:"name"`
+	Port        string                   `mapstructure:"port"`
+	Tags        []string                 `mapstructure:"tags"`
+	Address     string                   `mapstructure:"address"`
+	HealthCheck DiscoveryHealthCheckConf `mapstructure:"health_check"`
+}
+
+type DiscoveryHealthCheckConf struct {
+	URI                            string `mapstructure:"uri"`
+	Timeout                        string `mapstructure:"timeout"`
+	Interval                       string `mapstructure:"interval"`
+	DeregisterCriticalServiceAfter string `mapstructure:"dregister_critical_service_after"`
 }
