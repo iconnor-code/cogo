@@ -3,56 +3,63 @@ package discovery
 
 import (
 	"context"
+	"fmt"
+	"sync"
 
 	kitconsul "github.com/go-kit/kit/sd/consul"
 	consul "github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/api/watch"
+	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
-	"go.uber.org/zap"
 )
 
 type KitConsulDiscovery struct {
 	conf        core.IConfig
-	logger      core.ILogger
 	consul      kitconsul.Client
-	loadBalance core.IDiscoveryLoadBalance
+	loadBalance core.DiscoveryLoadBalance
+	instances   sync.Map
+	lock        sync.RWMutex
 }
 
-func WithDLBOption(dlb core.IDiscoveryLoadBalance) core.DiscoveryOption {
+func WithDLBOption(loadBalance core.DiscoveryLoadBalance) core.DiscoveryOption {
 	return func(d core.IDiscovery) error {
-		d.(*KitConsulDiscovery).loadBalance = dlb
+		d.(*KitConsulDiscovery).loadBalance = loadBalance
 		return nil
 	}
 }
 
-func NewKitConsulDiscovery(conf core.IConfig, logger core.ILogger) *KitConsulDiscovery {
+func NewKitConsulDiscovery(conf core.IConfig) (*KitConsulDiscovery, error) {
 	consulConf := consul.DefaultConfig()
 	consulConf.Address = conf.Get("consul.address").(string)
 	consul, err := consul.NewClient(consulConf)
 	if err != nil {
-		logger.Panic("consul discovery new consul client error", zap.Error(err))
+		return nil, cerrs.Wrap("new consul client error", err)
 	}
 	return &KitConsulDiscovery{
-		logger: logger,
 		consul: kitconsul.NewClient(consul),
-	}
+	}, nil
 }
 
-func (kcd *KitConsulDiscovery) GetServer(ctx context.Context, serverName string) (core.ServerInstance, error) {
-	instance, err := kcd.loadBalance.GetInstance(ctx, serverName)
-	if err != nil {
-		return nil, err
+func (kcd *KitConsulDiscovery) GetServer(ctx context.Context, serverName string) (core.IServerInstance, error) {
+	instances, ok := kcd.instances.Load(serverName)
+	if ok {
+		if dlb, ok := instances.(core.IDiscoveryLoadBalance); ok {
+			return dlb.GetInstance(ctx, serverName)
+		} else {
+			return nil, cerrs.New(fmt.Sprintf("wrong type of service discovery instances, servername:%s", serverName))
+		}
 	}
-	if instance != nil {
-		return instance, nil
-	}
+
+	kcd.lock.Lock()
+	defer kcd.lock.Unlock()
+
 	kcd.watchServersByName(ctx, serverName)
 
 	servers, _, err := kcd.consul.Service(serverName, "", true, nil)
 	if err != nil {
-		return nil, err
+		return nil, cerrs.Wrap("fail to find consul discovery service", err)
 	}
-	serverInstances := make([]core.ServerInstance, len(servers))
+	serverInstances := make([]core.IServerInstance, len(servers))
 	for i, server := range servers {
 		serverInstances[i] = &ServerInstance{
 			ID:      server.Service.ID,
@@ -63,23 +70,25 @@ func (kcd *KitConsulDiscovery) GetServer(ctx context.Context, serverName string)
 			Meta:    server.Service.Meta,
 		}
 	}
-	err = kcd.loadBalance.RefreshAll(ctx, serverName, serverInstances)
+	dlb := kcd.getLoadBalance(serverName)
+	err = dlb.RefreshInstance(ctx, serverName, serverInstances)
 	if err != nil {
-		return nil, err
+		return nil, cerrs.Wrap("fail to refresh consul instances", err)
 	}
-	return kcd.loadBalance.GetInstance(ctx, serverName)
+	kcd.instances.Store(serverName, dlb)
+
+	return dlb.GetInstance(ctx, serverName)
 }
 
 func (kcd *KitConsulDiscovery) watchServersByName(ctx context.Context, serverName string) {
 	// 监控实例变化
-	go func() {
+	go func() error {
 		params := make(map[string]any)
 		params["type"] = "service"
 		params["service"] = serverName
 		plan, err := watch.Parse(params)
 		if err != nil {
-			kcd.logger.Error("discovery watch servers error", zap.String("serverName", serverName), zap.Error(err))
-			return
+			return cerrs.Wrap("parsh error", err)
 		}
 		plan.Handler = func(idx uint64, data any) {
 			if data == nil {
@@ -90,10 +99,10 @@ func (kcd *KitConsulDiscovery) watchServersByName(ctx context.Context, serverNam
 				return
 			}
 			if len(v) == 0 {
-				kcd.loadBalance.RefreshAll(ctx, serverName, nil)
+				kcd.instances.Store(serverName, nil)
 				return
 			}
-			healthInstances := make([]core.ServerInstance, len(v))
+			healthInstances := make([]core.IServerInstance, len(v))
 			for _, service := range v {
 				if service.Checks.AggregatedStatus() == consul.HealthPassing {
 					healthInstances = append(healthInstances, &ServerInstance{
@@ -103,9 +112,30 @@ func (kcd *KitConsulDiscovery) watchServersByName(ctx context.Context, serverNam
 					})
 				}
 			}
-			kcd.loadBalance.RefreshAll(ctx, serverName, healthInstances)
+			dlb := kcd.getLoadBalance(serverName)
+			err := dlb.RefreshInstance(ctx, serverName, healthInstances)
+			if err != nil {
+				return
+			}
+			kcd.instances.Store(serverName, dlb)
 		}
 		defer plan.Stop()
 		plan.Run(kcd.conf.Get("discovery.address").(string))
+		return nil
 	}()
+}
+
+func (kcd *KitConsulDiscovery) getLoadBalance(serverName string) core.IDiscoveryLoadBalance {
+	if dlb, ok := kcd.instances.Load(serverName); ok {
+		return dlb.(core.IDiscoveryLoadBalance)
+	}
+
+	switch kcd.loadBalance {
+	case core.Random:
+		return NewRandomLoadBalance()
+	case core.RoundRobin:
+		return NewRoundRobinLoadBalance()
+	default:
+		return NewRandomLoadBalance()
+	}
 }

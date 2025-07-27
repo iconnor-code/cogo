@@ -1,3 +1,4 @@
+// Package server
 package server
 
 import (
@@ -80,7 +81,7 @@ func (s *GrpcServer) Start() error {
 
 	if s.registry != nil {
 		s.logger.Info("grpc server register", zap.String("name", s.conf["name"].(string)), zap.String("addr", s.conf["addr"].(string)))
-		if err := s.registry.Register(context.Background(), s.conf["name"].(string), s.conf["addr"].(string)); err != nil {
+		if err := s.registry.Register(context.Background()); err != nil {
 			return cerr.WithStack(err)
 		}
 	}
@@ -90,7 +91,7 @@ func (s *GrpcServer) Start() error {
 
 func (s *GrpcServer) Stop() error {
 	if s.registry != nil {
-		if err := s.registry.Deregister(context.Background(), s.conf["name"].(string), s.conf["addr"].(string)); err != nil {
+		if err := s.registry.DeRegister(context.Background()); err != nil {
 			return err
 		}
 	}

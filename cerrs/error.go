@@ -1,3 +1,4 @@
+// Package cerrs
 package cerrs
 
 import (
@@ -55,7 +56,7 @@ func Is(err, target error) bool {
 	return errors.Is(err, target)
 }
 
-func As(err error, target interface{}) bool {
+func As(err error, target any) bool {
 	return errors.As(err, target)
 }
 

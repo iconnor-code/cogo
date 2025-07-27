@@ -11,19 +11,19 @@ const (
 	Random     DiscoveryLoadBalance = "random"
 )
 
-type ServerInstance interface {
+type IServerInstance interface {
 	GetName() string
 	GetAddr() string
+	GetID() string
 }
 
 type IDiscovery interface {
-	GetServer(ctx context.Context, serverName string) (ServerInstance, error)
+	GetServer(ctx context.Context, serverName string) (IServerInstance, error)
 }
 
 type DiscoveryOption func(d IDiscovery) error
 
 type IDiscoveryLoadBalance interface {
-	GetInstance(ctx context.Context, serverName string) (ServerInstance, error)
-	PutInstance(ctx context.Context, serverName string, instance ServerInstance) error
-	RefreshAll(ctx context.Context, serverName string, instances []ServerInstance) error
+	GetInstance(ctx context.Context, serverName string) (IServerInstance, error)
+	RefreshInstance(ctx context.Context, serverName string, instances []IServerInstance) error
 }

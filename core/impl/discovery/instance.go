@@ -18,3 +18,7 @@ func (si *ServerInstance) GetName() string {
 func (si *ServerInstance) GetAddr() string {
 	return fmt.Sprintf("%v:%v", si.Address, si.Port)
 }
+
+func (si *ServerInstance) GetID() string {
+	return si.ID
+}

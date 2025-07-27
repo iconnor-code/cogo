@@ -13,7 +13,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 )
 
-type HttpServer struct {
+type HTTPServer struct {
 	conf   map[string]any
 	logger core.ILogger
 	// wg      *sync.WaitGroup
@@ -21,17 +21,17 @@ type HttpServer struct {
 	server  *http.Server
 }
 
-func WithHttpHandler(handler *runtime.ServeMux) core.ServerOption {
+func WithHTTPHandler(handler *runtime.ServeMux) core.ServerOption {
 	return func(s core.IServer) error {
-		server := s.(*HttpServer)
+		server := s.(*HTTPServer)
 		server.handler = handler
 		return nil
 	}
 }
 
-func WithHttpConfig(conf core.IConfig) core.ServerOption {
+func WithHTTPConfig(conf core.IConfig) core.ServerOption {
 	return func(s core.IServer) error {
-		server := s.(*HttpServer)
+		server := s.(*HTTPServer)
 		confMap := conf.Get("http").(map[string]any)
 		if confMap == nil {
 			return cerrs.New("http config is not found")
@@ -41,23 +41,23 @@ func WithHttpConfig(conf core.IConfig) core.ServerOption {
 	}
 }
 
-func WithHttpLogger(logger core.ILogger) core.ServerOption {
+func WithHTTPLogger(logger core.ILogger) core.ServerOption {
 	return func(s core.IServer) error {
-		s.(*HttpServer).logger = logger
+		s.(*HTTPServer).logger = logger
 		return nil
 	}
 }
 
-func NewHttpServer(opts ...core.ServerOption) *HttpServer {
-	s := &HttpServer{}
+func NewHTTPServer(opts ...core.ServerOption) *HTTPServer {
+	s := &HTTPServer{}
 	for _, opt := range opts {
 		opt(s)
 	}
 	return s
 }
 
-func (s *HttpServer) Start() error {
-	startHttpServer := func() (*http.Server, error) {
+func (s *HTTPServer) Start() error {
+	startHTTPServer := func() (*http.Server, error) {
 		httpSrv := &http.Server{
 			Handler: s.handler,
 			Addr:    s.conf["listen"].(string),
@@ -72,7 +72,7 @@ func (s *HttpServer) Start() error {
 		return httpSrv, nil
 	}
 
-	startHttpsServer := func(sslConfMap map[string]string) (*http.Server, error) {
+	startHTTPSServer := func(sslConfMap map[string]string) (*http.Server, error) {
 		httpsSrv := &http.Server{
 			Handler: s.handler,
 			Addr:    s.conf["listen"].(string),
@@ -94,12 +94,12 @@ func (s *HttpServer) Start() error {
 		if !ok {
 			return cerrs.New(fmt.Sprintf("https ssl config is error: %+v", sslConf))
 		}
-		s.server, err = startHttpsServer(sslConfMap)
+		s.server, err = startHTTPSServer(sslConfMap)
 		if err != nil {
 			return err
 		}
 	} else {
-		s.server, err = startHttpServer()
+		s.server, err = startHTTPServer()
 		if err != nil {
 			return err
 		}
@@ -107,7 +107,7 @@ func (s *HttpServer) Start() error {
 	return nil
 }
 
-func (s *HttpServer) Stop() error {
+func (s *HTTPServer) Stop() error {
 	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*5)
 	defer cancel()
 	if s.server != nil {
