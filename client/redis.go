@@ -1,4 +1,4 @@
-package database
+package client
 
 import (
 	"github.com/iconnor-code/cogo/core"

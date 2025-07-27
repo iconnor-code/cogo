@@ -5,16 +5,16 @@ import (
 	"errors"
 	"time"
 
+	"github.com/iconnor-code/cogo/cerrs"
+	"github.com/iconnor-code/cogo/client"
 	"github.com/iconnor-code/cogo/core"
-	"github.com/iconnor-code/cogo/pkg/cerr"
-	"github.com/iconnor-code/cogo/pkg/etcd"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 type KitEtcdRetistry struct {
 	config      map[string]any
-	etcd        *etcd.EtcdClient
+	etcd        *client.EtcdClient
 	leaseTTL    int64
 	leaseID     clientv3.LeaseID
 	cancel      context.CancelFunc
@@ -33,7 +33,7 @@ func WithEtcdRegisterConfig(config core.IConfig) core.RegistryOption {
 	}
 }
 
-func WithEtcdRegisterEtcdClient(etcd *etcd.EtcdClient) core.RegistryOption {
+func WithEtcdRegisterEtcdClient(etcd *client.EtcdClient) core.RegistryOption {
 	return func(r core.IRegistry) error {
 		registry := r.(*KitEtcdRetistry)
 		registry.etcd = etcd
@@ -61,13 +61,13 @@ func (r *KitEtcdRetistry) Register(ctx context.Context) error {
 	r.registryKey = r.config["server_name"].(string)
 	lease, err := r.etcd.Grant(ctx, r.leaseTTL)
 	if err != nil {
-		return cerr.WithStack(err)
+		return cerrs.Wrap(err)
 	}
 	r.leaseID = lease.ID
 
 	_, err = r.etcd.Put(ctx, r.registryKey, r.config["server_addr"].(string), clientv3.WithLease(lease.ID))
 	if err != nil {
-		return cerr.WithStack(err)
+		return cerrs.Wrap(err)
 	}
 	r.keepAlive(ctx)
 

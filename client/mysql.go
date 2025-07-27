@@ -1,4 +1,4 @@
-package database
+package client
 
 import (
 	"time"
@@ -52,12 +52,12 @@ func NewMysqlDB(opts ...MysqlDBOption) (*MysqlDB, error) {
 		Logger: gormLogger,
 	})
 	if err != nil {
-		return nil, cerrs.Wrap("failed to open mysql db", err)
+		return nil, cerrs.Wrap(err)
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, cerrs.Wrap("failed to get sql db", err)
+		return nil, cerrs.Wrap(err)
 	}
 
 	sqlDB.SetMaxOpenConns(mysqlDB.conf["max_open_conns"].(int))

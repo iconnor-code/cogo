@@ -1,18 +1,18 @@
+// Package token
 package token
 
 import (
 	"math"
 	"time"
 
+	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
-	"github.com/iconnor-code/cogo/pkg/cerr"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 )
 
-const JWT_TOKEN_KEY = "access_token"
+const JwtTokenKey = "access_token"
 
 type User struct {
 	ID uint32
@@ -45,23 +45,23 @@ func (j *JwtToken) GenerateToken(user *User) error {
 }
 
 func (j *JwtToken) ParseToken(accessToken string) (*User, error) {
-	token, err := jwt.Parse(accessToken, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(accessToken, func(token *jwt.Token) (any, error) {
 		return []byte(j.config.Get("jwt.access_secret").(string)), nil
 	})
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, cerrs.Wrap(err)
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, cerr.NewClientError("invalid access token claims", nil)
+		return nil, cerrs.New("invalid access token claims")
 	}
 
 	userID, ok := claims["user_id"].(float64)
 	if !ok {
-		return nil, cerr.NewClientError("invalid user_id in token claims", nil)
+		return nil, cerrs.New("invalid user_id in token claims")
 	}
 	if userID < 0 || userID > math.MaxUint32 {
-		return nil, cerr.NewClientError("user_id out of range", nil)
+		return nil, cerrs.New("user_id out of range")
 	}
 	return &User{
 		ID: uint32(userID),

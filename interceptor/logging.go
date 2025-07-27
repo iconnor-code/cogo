@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
-	"github.com/iconnor-code/cogo/pkg/cerr"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -31,35 +31,17 @@ func LoggingInterceptor(logger core.ILogger) grpc.UnaryServerInterceptor {
 			return resp, nil
 		}
 
-		if customErr, ok := err.(*cerr.CustomError); ok {
-			code := customErr.Code / 1000
-			if code == 4 {
-				logger.Debug("client custom error",
-					zap.Any("code", customErr.Code),
-					zap.Any("msg", customErr.Msg),
-					zap.String("method", info.FullMethod),
-					zap.Any("request", req),
-					zap.Any("response", resp),
-					zap.Error(customErr.Err),
-				)
-			} else if code == 6 {
-				logger.Error("external custom error",
-					zap.Any("code", customErr.Code),
-					zap.Any("msg", customErr.Msg),
-					zap.String("method", info.FullMethod),
-					zap.Any("request", req),
-					zap.Any("response", resp),
-					zap.Error(customErr.Err),
-				)
-			} else {
+		if customErr, ok := err.(*cerrs.CError); ok {
+			if customErr.GetCode() == cerrs.InternalErrCode {
 				logger.Error("internal custom error",
-					zap.Any("code", customErr.Code),
-					zap.Any("msg", customErr.Msg),
+					zap.Any("code", customErr.GetCode()),
+					zap.Any("msg", customErr.Error()),
 					zap.String("method", info.FullMethod),
 					zap.Any("request", req),
 					zap.Any("response", resp),
-					zap.Error(customErr.Err),
+					zap.Error(customErr),
 				)
+				return nil, cerrs.InternalError
 			}
 			return nil, customErr
 		}
@@ -70,6 +52,6 @@ func LoggingInterceptor(logger core.ILogger) grpc.UnaryServerInterceptor {
 			zap.Any("response", resp),
 			zap.Error(err),
 		)
-		return nil, cerr.ErrInternalError
+		return nil, cerrs.InternalError
 	}
 }

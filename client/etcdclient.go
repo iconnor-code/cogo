@@ -1,8 +1,8 @@
-package etcd
+package client
 
 import (
+	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
-	"github.com/iconnor-code/cogo/pkg/cerr"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -16,7 +16,7 @@ func NewEtcdClient(config core.IConfig) (*EtcdClient, error) {
 		Endpoints: config.Get("etcd.endpoints").([]string),
 	})
 	if err != nil {
-		return nil, cerr.WithStack(err)
+		return nil, cerrs.Wrap(err)
 	}
 	return &EtcdClient{
 		Client: client,

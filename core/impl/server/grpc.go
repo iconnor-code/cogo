@@ -8,7 +8,6 @@ import (
 
 	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
-	"github.com/iconnor-code/cogo/pkg/cerr"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -64,7 +63,7 @@ func NewGrpcServer(opts ...core.ServerOption) (*GrpcServer, error) {
 	}
 	listener, err := net.Listen("tcp", s.conf["listen"].(string))
 	if err != nil {
-		return nil, cerrs.Wrap("failed to listen", err)
+		return nil, cerrs.Wrap(err)
 	}
 	s.listener = listener
 	return s, nil
@@ -82,7 +81,7 @@ func (s *GrpcServer) Start() error {
 	if s.registry != nil {
 		s.logger.Info("grpc server register", zap.String("name", s.conf["name"].(string)), zap.String("addr", s.conf["addr"].(string)))
 		if err := s.registry.Register(context.Background()); err != nil {
-			return cerr.WithStack(err)
+			return cerrs.Wrap(err)
 		}
 	}
 

@@ -1,4 +1,4 @@
-package database
+package client
 
 import (
 	"context"
@@ -9,13 +9,13 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 首先创建一个实现 gorm.Logger 接口的自定义 logger 结构体
+// GormZapLogger 首先创建一个实现 gorm.Logger 接口的自定义 logger 结构体
 type GormZapLogger struct {
 	logger core.ILogger
 	level  logger.LogLevel
 }
 
-// 创建新的 logger 实例
+// NewGormZapLogger 创建新的 logger 实例
 func NewGormZapLogger(logger core.ILogger) *GormZapLogger {
 	return &GormZapLogger{
 		logger: logger,
@@ -23,22 +23,22 @@ func NewGormZapLogger(logger core.ILogger) *GormZapLogger {
 	}
 }
 
-// 实现 gorm.Logger 接口的必要方法
+// LogMode 实现 gorm.Logger 接口的必要方法
 func (l *GormZapLogger) LogMode(level logger.LogLevel) logger.Interface {
 	newlogger := *l
 	newlogger.level = level
 	return &newlogger
 }
 
-func (l *GormZapLogger) Info(ctx context.Context, msg string, data ...interface{}) {
+func (l *GormZapLogger) Info(ctx context.Context, msg string, data ...any) {
 	l.logger.Info(msg, data...)
 }
 
-func (l *GormZapLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
+func (l *GormZapLogger) Warn(ctx context.Context, msg string, data ...any) {
 	l.logger.Warn(msg, data...)
 }
 
-func (l *GormZapLogger) Error(ctx context.Context, msg string, data ...interface{}) {
+func (l *GormZapLogger) Error(ctx context.Context, msg string, data ...any) {
 	l.logger.Error(msg, data...)
 }
 

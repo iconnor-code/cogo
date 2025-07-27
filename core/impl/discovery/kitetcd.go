@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/iconnor-code/cogo/cerrs"
+	"github.com/iconnor-code/cogo/client"
 	"github.com/iconnor-code/cogo/core"
-	"github.com/iconnor-code/cogo/pkg/cerr"
-	"github.com/iconnor-code/cogo/pkg/etcd"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/credentials/insecure"
@@ -15,7 +15,7 @@ import (
 
 type KitEtcdDiscovery struct {
 	config map[string]any
-	etcd   *etcd.EtcdClient
+	etcd   *client.EtcdClient
 }
 
 func NewKitEtcdDiscovery(opts ...core.DiscoveryOption) (*KitEtcdDiscovery, error) {
@@ -40,7 +40,7 @@ func WithEtcdDiscoverConfig(config core.IConfig) core.DiscoveryOption {
 	}
 }
 
-func WithEtcdDiscoverEtcdClient(etcd *etcd.EtcdClient) core.DiscoveryOption {
+func WithEtcdDiscoverEtcdClient(etcd *client.EtcdClient) core.DiscoveryOption {
 	return func(d core.IDiscovery) error {
 		discovery := d.(*KitEtcdDiscovery)
 		discovery.etcd = etcd
@@ -55,7 +55,7 @@ func (ked *KitEtcdDiscovery) GetServer(ctx context.Context, serverName string) (
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingPolicy":"%s"}`, roundrobin.Name)),
 	)
 	if err != nil {
-		return nil, cerr.WithStack(err)
+		return nil, cerrs.Wrap(err)
 	}
 	return &ServerInstance{}, nil
 }

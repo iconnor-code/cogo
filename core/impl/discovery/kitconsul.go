@@ -33,7 +33,7 @@ func NewKitConsulDiscovery(conf core.IConfig) (*KitConsulDiscovery, error) {
 	consulConf.Address = conf.Get("consul.address").(string)
 	consul, err := consul.NewClient(consulConf)
 	if err != nil {
-		return nil, cerrs.Wrap("new consul client error", err)
+		return nil, cerrs.Wrap(err)
 	}
 	return &KitConsulDiscovery{
 		consul: kitconsul.NewClient(consul),
@@ -57,7 +57,7 @@ func (kcd *KitConsulDiscovery) GetServer(ctx context.Context, serverName string)
 
 	servers, _, err := kcd.consul.Service(serverName, "", true, nil)
 	if err != nil {
-		return nil, cerrs.Wrap("fail to find consul discovery service", err)
+		return nil, cerrs.Wrap(err)
 	}
 	serverInstances := make([]core.IServerInstance, len(servers))
 	for i, server := range servers {
@@ -73,7 +73,7 @@ func (kcd *KitConsulDiscovery) GetServer(ctx context.Context, serverName string)
 	dlb := kcd.getLoadBalance(serverName)
 	err = dlb.RefreshInstance(ctx, serverName, serverInstances)
 	if err != nil {
-		return nil, cerrs.Wrap("fail to refresh consul instances", err)
+		return nil, cerrs.Wrap(err)
 	}
 	kcd.instances.Store(serverName, dlb)
 
@@ -88,7 +88,7 @@ func (kcd *KitConsulDiscovery) watchServersByName(ctx context.Context, serverNam
 		params["service"] = serverName
 		plan, err := watch.Parse(params)
 		if err != nil {
-			return cerrs.Wrap("parsh error", err)
+			return cerrs.Wrap(err)
 		}
 		plan.Handler = func(idx uint64, data any) {
 			if data == nil {

@@ -1,7 +1,9 @@
+// Package smtp
 package smtp
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"net/smtp"
@@ -10,12 +12,10 @@ import (
 
 	"github.com/iconnor-code/cogo/core"
 
-	"crypto/tls"
-
 	"go.uber.org/zap"
 )
 
-type EmailSmtp struct {
+type EmailSMTP struct {
 	host     string
 	port     int
 	username string
@@ -28,8 +28,8 @@ type EmailSmtp struct {
 	subject string
 }
 
-func NewSmtp(conf core.IConfig, logger core.ILogger) *EmailSmtp {
-	return &EmailSmtp{
+func NewSMTP(conf core.IConfig, logger core.ILogger) *EmailSMTP {
+	return &EmailSMTP{
 		host:     conf.Get("smtp.host").(string),
 		port:     conf.Get("smtp.port").(int),
 		username: conf.Get("smtp.username").(string),
@@ -38,7 +38,7 @@ func NewSmtp(conf core.IConfig, logger core.ILogger) *EmailSmtp {
 	}
 }
 
-func (e *EmailSmtp) SendVerifyCode(ctx context.Context, from string, to string, code string, period time.Duration) error {
+func (e *EmailSMTP) SendVerifyCode(ctx context.Context, from string, to string, code string, period time.Duration) error {
 	e.from = from
 	e.to = []string{to}
 	e.subject = "您的验证码"
@@ -61,7 +61,7 @@ func (e *EmailSmtp) SendVerifyCode(ctx context.Context, from string, to string, 
 	return nil
 }
 
-func (e *EmailSmtp) sendEmail() {
+func (e *EmailSMTP) sendEmail() {
 	addr := fmt.Sprintf("%s:%d", e.host, e.port)
 	tlsConfig := &tls.Config{
 		ServerName:         e.host,
@@ -129,7 +129,7 @@ func (e *EmailSmtp) sendEmail() {
 	e.logger.Info("SMTP发送邮件完成")
 }
 
-func (e *EmailSmtp) log() {
+func (e *EmailSMTP) log() {
 	e.logger.AddGlobalFields(
 		zap.String("app_name", e.from),
 		zap.String("host", e.host),

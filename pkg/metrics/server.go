@@ -1,3 +1,4 @@
+// Package metrics
 package metrics
 
 import (
@@ -23,6 +24,7 @@ func WithMetricsConfig(conf core.IConfig) core.ServerOption {
 		return nil
 	}
 }
+
 func WithMetricsLogger(logger core.ILogger) core.ServerOption {
 	return func(s core.IServer) error {
 		server := s.(*MetricsServer)

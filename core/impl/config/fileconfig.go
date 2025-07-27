@@ -30,6 +30,7 @@ func WithFilepath(filepath string) core.ConfigOption {
 		return nil
 	}
 }
+
 func WithConfigValue(value core.IConfigValue) core.ConfigOption {
 	return func(c core.IConfig) error {
 		conf, ok := c.(*FileConfig)
@@ -67,13 +68,13 @@ func (c *FileConfig) LoadConfig() error {
 		viper.SetConfigName(fileNameWithoutExt)
 
 		if err := viper.ReadInConfig(); err != nil {
-			loadErr = cerrs.Wrap(fmt.Sprintf("reading config file error: %s", c.filepath), err)
+			loadErr = cerrs.Wrap(err, fmt.Sprintf("reading config file error,filepath:%s", c.filepath))
 			return
 		}
 
 		err := viper.Unmarshal(c.value)
 		if err != nil {
-			loadErr = cerrs.Wrap("unmarshalling config error", err)
+			loadErr = cerrs.Wrap(err)
 			return
 		}
 	})
