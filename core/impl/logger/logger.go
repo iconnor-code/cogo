@@ -1,9 +1,10 @@
+// Package logger
 package logger
 
 import (
-	"errors"
 	"os"
 
+	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
 
 	"github.com/natefinch/lumberjack"
@@ -15,53 +16,29 @@ type Logger struct {
 	logger *zap.Logger
 	conf   map[string]any
 	fields []zap.Field
+	mode   string
 }
 
-func LoggerWithConfig(conf core.IConfig) core.LoggerOption {
+func LoggerModeOption(mode string) core.LoggerOption {
 	return func(l core.ILogger) error {
-		l.(*Logger).conf = conf.Get("logger").(map[string]any)
+		l.(*Logger).mode = mode
 		return nil
 	}
 }
 
-func LoggerWithZap(mode string) core.LoggerOption {
-	return func(l core.ILogger) error {
-		logger := l.(*Logger)
-		fileEncoder := getFileEncoder()
-		stdoutEncoder := getStdoutEncoder()
-
-		if logger.conf == nil {
-			return errors.New("logger config not found")
-		}
-		infoWriter := getInfoLogFileWriter(logger.conf)
-		errWriter := getErrLogFileWriter(logger.conf)
-
-		errLevelEnabler := zap.LevelEnablerFunc(func(level zapcore.Level) bool {
-			return level >= zap.ErrorLevel
-		})
-		infoLevelEnabler := zap.LevelEnablerFunc(func(level zapcore.Level) bool {
-			return level < zap.ErrorLevel
-		})
-
-		infoCore := zapcore.NewCore(fileEncoder, infoWriter, infoLevelEnabler)
-		errCore := zapcore.NewCore(fileEncoder, errWriter, errLevelEnabler)
-		coreArr := []zapcore.Core{infoCore, errCore}
-		if mode == "debug" {
-			coreArr = append(coreArr, zapcore.NewCore(stdoutEncoder, getStdoutWriter(), zap.DebugLevel))
-		}
-
-		logger.logger = zap.New(zapcore.NewTee(coreArr...), zap.AddCaller(), zap.AddCallerSkip(1))
-		return nil
+func NewLogger(config core.IConfig, opts ...core.LoggerOption) (*Logger, error) {
+	logger := &Logger{
+		conf: config.Get("logger").(map[string]any),
 	}
-}
-
-func NewLogger(opts ...core.LoggerOption) (*Logger, error) {
-	logger := &Logger{}
 	for _, opt := range opts {
 		err := opt(logger)
 		if err != nil {
 			return nil, err
 		}
+	}
+	err := logger.init()
+	if err != nil {
+		return nil, cerrs.Wrap(err)
 	}
 	return logger, nil
 }
@@ -100,6 +77,34 @@ func (l *Logger) AddGlobalFields(fields ...any) {
 	for _, field := range fields {
 		l.fields = append(l.fields, field.(zap.Field))
 	}
+}
+
+func (l *Logger) init() error {
+	fileEncoder := getFileEncoder()
+	stdoutEncoder := getStdoutEncoder()
+
+	if l.conf == nil {
+		return cerrs.New("logger config not found")
+	}
+	infoWriter := getInfoLogFileWriter(l.conf)
+	errWriter := getErrLogFileWriter(l.conf)
+
+	errLevelEnabler := zap.LevelEnablerFunc(func(level zapcore.Level) bool {
+		return level >= zap.ErrorLevel
+	})
+	infoLevelEnabler := zap.LevelEnablerFunc(func(level zapcore.Level) bool {
+		return level < zap.ErrorLevel
+	})
+
+	infoCore := zapcore.NewCore(fileEncoder, infoWriter, infoLevelEnabler)
+	errCore := zapcore.NewCore(fileEncoder, errWriter, errLevelEnabler)
+	coreArr := []zapcore.Core{infoCore, errCore}
+	if l.mode == "debug" {
+		coreArr = append(coreArr, zapcore.NewCore(stdoutEncoder, getStdoutWriter(), zap.DebugLevel))
+	}
+
+	l.logger = zap.New(zapcore.NewTee(coreArr...), zap.AddCaller(), zap.AddCallerSkip(1))
+	return nil
 }
 
 func (l *Logger) withFields() error {

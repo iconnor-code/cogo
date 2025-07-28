@@ -9,7 +9,10 @@ import (
 
 type CerrCode int
 
-const InternalErrCode CerrCode = 5000
+const (
+	InternalErrCode CerrCode = 5000
+	ParamErrCode    CerrCode = 4000
+)
 
 var InternalError = NewWithCode(InternalErrCode, "internal error")
 

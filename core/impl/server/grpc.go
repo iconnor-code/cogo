@@ -3,7 +3,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"net"
 
 	"github.com/iconnor-code/cogo/cerrs"
@@ -20,26 +19,6 @@ type GrpcServer struct {
 	baseServer *grpc.Server
 }
 
-func WithGrpcConfig(conf core.IConfig) core.ServerOption {
-	return func(s core.IServer) error {
-		server := s.(*GrpcServer)
-		confMap := conf.Get("grpc").(map[string]any)
-		if confMap == nil {
-			return errors.New("grpc config is not found")
-		}
-		server.conf = confMap
-		return nil
-	}
-}
-
-func WithGrpcLogger(logger core.ILogger) core.ServerOption {
-	return func(s core.IServer) error {
-		server := s.(*GrpcServer)
-		server.logger = logger
-		return nil
-	}
-}
-
 func WithGrpcRegistry(registry core.IRegistry) core.ServerOption {
 	return func(s core.IServer) error {
 		server := s.(*GrpcServer)
@@ -48,16 +27,16 @@ func WithGrpcRegistry(registry core.IRegistry) core.ServerOption {
 	}
 }
 
-func WithGrpcBaseServer(baseServer *grpc.Server) core.ServerOption {
-	return func(s core.IServer) error {
-		server := s.(*GrpcServer)
-		server.baseServer = baseServer
-		return nil
+func NewGrpcServer(config core.IConfig, logger core.ILogger, bs *grpc.Server, opts ...core.ServerOption) (*GrpcServer, error) {
+	conf, ok := config.Get("grpc").(map[string]any)
+	if !ok {
+		return nil, cerrs.New("grpc config error")
 	}
-}
-
-func NewGrpcServer(opts ...core.ServerOption) (*GrpcServer, error) {
-	s := &GrpcServer{}
+	s := &GrpcServer{
+		conf:       conf,
+		logger:     logger,
+		baseServer: bs,
+	}
 	for _, opt := range opts {
 		opt(s)
 	}

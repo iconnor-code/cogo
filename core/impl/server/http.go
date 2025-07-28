@@ -21,39 +21,17 @@ type HTTPServer struct {
 	server  *http.Server
 }
 
-func WithHTTPHandler(handler *runtime.ServeMux) core.ServerOption {
-	return func(s core.IServer) error {
-		server := s.(*HTTPServer)
-		server.handler = handler
-		return nil
+func NewHTTPServer(config core.IConfig, logger core.ILogger, handler *runtime.ServeMux) (*HTTPServer, error) {
+	conf := config.Get("http").(map[string]any)
+	if conf == nil {
+		return nil, cerrs.New("http config is not found")
 	}
-}
-
-func WithHTTPConfig(conf core.IConfig) core.ServerOption {
-	return func(s core.IServer) error {
-		server := s.(*HTTPServer)
-		confMap := conf.Get("http").(map[string]any)
-		if confMap == nil {
-			return cerrs.New("http config is not found")
-		}
-		server.conf = confMap
-		return nil
+	s := &HTTPServer{
+		conf:    conf,
+		logger:  logger,
+		handler: handler,
 	}
-}
-
-func WithHTTPLogger(logger core.ILogger) core.ServerOption {
-	return func(s core.IServer) error {
-		s.(*HTTPServer).logger = logger
-		return nil
-	}
-}
-
-func NewHTTPServer(opts ...core.ServerOption) *HTTPServer {
-	s := &HTTPServer{}
-	for _, opt := range opts {
-		opt(s)
-	}
-	return s
+	return s, nil
 }
 
 func (s *HTTPServer) Start() error {
