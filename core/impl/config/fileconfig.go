@@ -12,55 +12,12 @@ import (
 
 var loadOnce sync.Once
 
-type FileConfig struct {
-	filepath string
-	value    core.IConfigValue
-}
-
-func WithFilepath(filepath string) core.ConfigOption {
-	return func(c core.IConfig) error {
-		if filepath == "" {
-			return cerrs.New("config filepath is required")
-		}
-		conf, ok := c.(*FileConfig)
-		if !ok {
-			return cerrs.New("config is not a FileConfig")
-		}
-		conf.filepath = filepath
-		return nil
-	}
-}
-
-func WithConfigValue(value core.IConfigValue) core.ConfigOption {
-	return func(c core.IConfig) error {
-		conf, ok := c.(*FileConfig)
-		if !ok {
-			return cerrs.New("config is not a FileConfig")
-		}
-		conf.value = value
-		return nil
-	}
-}
-
-func NewConfig(opts ...core.ConfigOption) (*FileConfig, error) {
-	conf := &FileConfig{}
-	for _, opt := range opts {
-		if err := opt(conf); err != nil {
-			return nil, err
-		}
-	}
-	if err := conf.LoadConfig(); err != nil {
-		return nil, err
-	}
-	return conf, nil
-}
-
-func (c *FileConfig) LoadConfig() error {
+func LoadFileConfig(filepath string, value core.IConfig) error {
 	var loadErr error
 	loadOnce.Do(func() {
-		dir := path.Dir(c.filepath)
-		fileNameWithoutExt := path.Base(c.filepath)
-		ext := path.Ext(c.filepath)
+		dir := path.Dir(filepath)
+		fileNameWithoutExt := path.Base(filepath)
+		ext := path.Ext(filepath)
 		fileNameWithoutExt = fileNameWithoutExt[:len(fileNameWithoutExt)-len(ext)]
 
 		viper.SetConfigType("yaml")
@@ -68,23 +25,15 @@ func (c *FileConfig) LoadConfig() error {
 		viper.SetConfigName(fileNameWithoutExt)
 
 		if err := viper.ReadInConfig(); err != nil {
-			loadErr = cerrs.Wrap(err, fmt.Sprintf("reading config file error,filepath:%s", c.filepath))
+			loadErr = cerrs.Wrap(err, fmt.Sprintf("reading config file error,filepath:%s", filepath))
 			return
 		}
 
-		err := viper.Unmarshal(c.value)
+		err := viper.Unmarshal(value)
 		if err != nil {
 			loadErr = cerrs.Wrap(err)
 			return
 		}
 	})
 	return loadErr
-}
-
-func (c *FileConfig) GetConfig() core.IConfigValue {
-	return c.value
-}
-
-func (c *FileConfig) Get(key string) any {
-	return c.value.Get(key)
 }

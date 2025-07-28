@@ -35,8 +35,8 @@ func NewKitConsulRegistry(conf core.IConfig, logger core.ILogger) *KitConsulRegi
 }
 
 func (kcd *KitConsulRegistry) Register(ctx context.Context) error {
-	conf := kcd.conf.Get("registry").(core.IConfigValue)
-	healthConf := conf.Get("health_check").(core.IConfigValue)
+	conf := kcd.conf.Get("registry").(core.IConfig)
+	healthConf := conf.Get("health_check").(core.IConfig)
 	serviceRegistration := &consul.AgentServiceRegistration{
 		ID:   kcd.id,
 		Name: conf.Get("name").(string),
