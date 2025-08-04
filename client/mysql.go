@@ -18,25 +18,10 @@ type MysqlDB struct {
 
 type MysqlDBOption func(db *MysqlDB) error
 
-func WithMysqlConfig(conf core.IConfig) MysqlDBOption {
-	return func(db *MysqlDB) error {
-		confMap := conf.Get("mysql").(map[string]any)
-		db.conf = confMap
-		return nil
-	}
-}
-
-func WithMysqlLogger(logger core.ILogger) MysqlDBOption {
-	return func(db *MysqlDB) error {
-		db.logger = logger
-		return nil
-	}
-}
-
-func NewMysqlDB(opts ...MysqlDBOption) (*MysqlDB, error) {
-	mysqlDB := &MysqlDB{}
-	for _, opt := range opts {
-		opt(mysqlDB)
+func NewMysqlDB(config core.IConfig, logger core.ILogger) (*MysqlDB, error) {
+	mysqlDB := &MysqlDB{
+		conf:   config.Get("mysql").(map[string]any),
+		logger: logger,
 	}
 
 	gormLogger := NewGormZapLogger(mysqlDB.logger)

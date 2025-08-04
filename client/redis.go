@@ -12,17 +12,9 @@ type RedisClient struct {
 
 type RedisClientOption func(client *RedisClient) error
 
-func WithRedisConfig(config core.IConfig) RedisClientOption {
-	return func(client *RedisClient) error {
-		client.conf = config.Get("redis").(map[string]any)
-		return nil
-	}
-}
-
-func NewRedisClient(opts ...RedisClientOption) *RedisClient {
-	client := &RedisClient{}
-	for _, opt := range opts {
-		opt(client)
+func NewRedisClient(config core.IConfig) *RedisClient {
+	client := &RedisClient{
+		conf: config.Get("redis").(map[string]any),
 	}
 
 	redisClient := redis.NewClient(&redis.Options{
