@@ -27,7 +27,7 @@ func WithGrpcRegistry(registry core.IRegistry) core.ServerOption {
 	}
 }
 
-func NewGrpcServer(config core.IConfig, logger core.ILogger, bs *grpc.Server, opts ...core.ServerOption) (*GrpcServer, error) {
+func NewGrpcServer(config core.IConfig, logger core.ILogger, bs *grpc.Server, registars []core.GrpcRegistar, opts ...core.ServerOption) (*GrpcServer, error) {
 	conf, ok := config.Get("grpc").(map[string]any)
 	if !ok {
 		return nil, cerrs.New("grpc config error")
