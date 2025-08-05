@@ -79,3 +79,9 @@ func (s *GrpcServer) Stop() error {
 
 	return nil
 }
+
+func (s *GrpcServer) RegisterService(srvs []any, registars []func(bs *grpc.Server, srv any)) {
+	for i, srv := range srvs {
+		registars[i](s.baseServer, srv)
+	}
+}
