@@ -6,13 +6,11 @@ import "github.com/spf13/viper"
 type ConfigValue struct {
 	Mode      string          `mapstructure:"mode"`
 	Grpc      GrpcConfig      `mapstructure:"grpc"`
-	Logger    LogConfig       `mapstructure:"logger"`
 	HTTP      HTTPConfig      `mapstructure:"http"`
+	Logger    LogConfig       `mapstructure:"logger"`
 	Metrics   MetricsConfig   `mapstructure:"metrics"`
 	Mysql     MysqlConfig     `mapstructure:"mysql"`
 	Redis     RedisConfig     `mapstructure:"redis"`
-	SMTP      SMTPConfig      `mapstructure:"smtp"`
-	JwtToken  JwtTokenConfig  `mapstructure:"jwt_token"`
 	Etcd      EtcdConfig      `mapstructure:"etcd"`
 	Registry  RegistryConfig  `mapstructure:"registry"`
 	Consul    ConsulConfig    `mapstructure:"consul"`
@@ -65,27 +63,15 @@ type MysqlConfig struct {
 	} `mapstructure:"pool"`
 }
 
-type SMTPConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
-}
-
 type RedisConfig struct {
 	Addr     string `mapstructure:"addr"`
 	Password string `mapstructure:"password"`
 	DB       int    `mapstructure:"db"`
 }
 
-type JwtTokenConfig struct {
-	AccessSecret  string `mapstructure:"access_secret"`
-	AccessExpire  int    `mapstructure:"access_expire"`
-	RefreshExpire int    `mapstructure:"refresh_expire"`
-}
-
 type ConsulConfig struct {
 	Address string `mapstructure:"address"`
+	Scheme  string `mapstructure:"scheme"`
 }
 
 type DiscoveryConfig struct {
