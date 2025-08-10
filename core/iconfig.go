@@ -1,8 +1,15 @@
 // Package core core interface
 package core
 
-type ConfigOption func(IConfig) error
-
-type IConfig interface {
+type IConfVal interface {
 	Get(key string) any
 }
+
+type (
+	ConfigOption func(IConfig) error
+	IConfig      interface {
+		Get(key string) any
+		GetVal() IConfVal
+		ReLoad() error
+	}
+)

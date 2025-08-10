@@ -1,13 +1,16 @@
 // Package config
 package config
 
-import "github.com/spf13/viper"
+import "sync"
 
-type ConfigValue struct {
+type Config struct {
+	rwmutex  sync.RWMutex `mapstructure:"-"`
+	filepath string       `mapstructure:"-"`
+
 	Mode      string          `mapstructure:"mode"`
 	Grpc      GrpcConfig      `mapstructure:"grpc"`
-	HTTP      HTTPConfig      `mapstructure:"http"`
 	Logger    LogConfig       `mapstructure:"logger"`
+	HTTP      HTTPConfig      `mapstructure:"http"`
 	Metrics   MetricsConfig   `mapstructure:"metrics"`
 	Mysql     MysqlConfig     `mapstructure:"mysql"`
 	Redis     RedisConfig     `mapstructure:"redis"`
@@ -15,10 +18,6 @@ type ConfigValue struct {
 	Registry  RegistryConfig  `mapstructure:"registry"`
 	Consul    ConsulConfig    `mapstructure:"consul"`
 	Discovery DiscoveryConfig `mapstructure:"discovery"`
-}
-
-func (c *ConfigValue) Get(key string) any {
-	return viper.Get(key)
 }
 
 type EtcdConfig struct {
@@ -71,7 +70,6 @@ type RedisConfig struct {
 
 type ConsulConfig struct {
 	Address string `mapstructure:"address"`
-	Scheme  string `mapstructure:"scheme"`
 }
 
 type DiscoveryConfig struct {
