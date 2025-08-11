@@ -25,3 +25,7 @@ func NewConsul(config core.IConfig) *Consul {
 		client: consul,
 	}
 }
+
+func (c *Consul) GetKitConsul() *consul.Client {
+	return c.client
+}

@@ -1,44 +1,26 @@
-// Package registry
 package registry
 
 import (
 	"context"
 	"fmt"
 
-	kitconsul "github.com/go-kit/kit/sd/consul"
-	"github.com/google/uuid"
 	consul "github.com/hashicorp/consul/api"
+	"github.com/iconnor-code/cogo/client"
 	"github.com/iconnor-code/cogo/core"
-	"go.uber.org/zap"
 )
 
-type KitConsulRegistry struct {
-	id     string
-	conf   core.IConfig
-	consul kitconsul.Client
-	logger core.ILogger
-}
-
-func NewKitConsulRegistry(conf core.IConfig, logger core.ILogger) *KitConsulRegistry {
-	id := uuid.New().String()
-	consulConf := consul.DefaultConfig()
-	consulConf.Address = conf.Get("consul.address").(string)
-	consul, err := consul.NewClient(consulConf)
-	if err != nil {
-		logger.Panic("new consul client error", zap.Error(err))
-	}
-	return &KitConsulRegistry{
-		id:     id,
-		logger: logger,
-		consul: kitconsul.NewClient(consul),
+func WithKitConsulClient(c *client.Consul) core.RegistryOption {
+	return func(r core.IRegistry) error {
+		r.(*Registry).consulClient = c
+		return nil
 	}
 }
 
-func (kcd *KitConsulRegistry) Register(ctx context.Context) error {
-	conf := kcd.conf.Get("registry").(core.IConfig)
+func (r *Registry) kitconsulRegister(ctx context.Context) error {
+	conf := r.config.Get("registry").(core.IConfig)
 	healthConf := conf.Get("health_check").(core.IConfig)
 	serviceRegistration := &consul.AgentServiceRegistration{
-		ID:   kcd.id,
+		ID:   r.id,
 		Name: conf.Get("name").(string),
 		Tags: conf.Get("tags").([]string),
 		Port: conf.Get("port").(int),
@@ -50,11 +32,11 @@ func (kcd *KitConsulRegistry) Register(ctx context.Context) error {
 			Status:   "passing",
 		},
 	}
-	return kcd.consul.Register(serviceRegistration)
+	return r.consulClient.getKitConsul().Register(serviceRegistration)
 }
 
-func (kcd *KitConsulRegistry) DeRegister(ctx context.Context) error {
-	return kcd.consul.Deregister(&consul.AgentServiceRegistration{
-		ID: kcd.id,
+func (r *Registry) kitconsulDeRegister(ctx context.Context) error {
+	return r.consulClient.Deregister(&consul.AgentServiceRegistration{
+		ID: r.id,
 	})
 }

@@ -4,17 +4,17 @@ package config
 import "github.com/spf13/viper"
 
 type ConfVal struct {
-	Mode      string          `mapstructure:"mode"`
-	Grpc      GrpcConfig      `mapstructure:"grpc"`
-	HTTP      HTTPConfig      `mapstructure:"http"`
-	Logger    LogConfig       `mapstructure:"logger"`
-	Metrics   MetricsConfig   `mapstructure:"metrics"`
-	Mysql     MysqlConfig     `mapstructure:"mysql"`
-	Redis     RedisConfig     `mapstructure:"redis"`
-	Etcd      EtcdConfig      `mapstructure:"etcd"`
-	Registry  RegistryConfig  `mapstructure:"registry"`
-	Consul    ConsulConfig    `mapstructure:"consul"`
-	Discovery DiscoveryConfig `mapstructure:"discovery"`
+	Mode     string         `mapstructure:"mode"`
+	Grpc     GrpcConfig     `mapstructure:"grpc"`
+	HTTP     HTTPConfig     `mapstructure:"http"`
+	Logger   LogConfig      `mapstructure:"logger"`
+	Metrics  MetricsConfig  `mapstructure:"metrics"`
+	Mysql    MysqlConfig    `mapstructure:"mysql"`
+	Redis    RedisConfig    `mapstructure:"redis"`
+	Etcd     EtcdConfig     `mapstructure:"etcd"`
+	Consul   ConsulConfig   `mapstructure:"consul"`
+	Registry RegistryConfig `mapstructure:"registry"`
+	// Discovery DiscoveryConfig `mapstructure:"discovery"`
 }
 
 func (c *ConfVal) Get(key string) any {
@@ -23,10 +23,6 @@ func (c *ConfVal) Get(key string) any {
 
 type EtcdConfig struct {
 	Endpoints []string `mapstructure:"endpoints"`
-}
-
-type RegistryConfig struct {
-	Hostname string `mapstructure:"hostname"`
 }
 
 type GrpcConfig struct {
@@ -74,16 +70,16 @@ type ConsulConfig struct {
 	Scheme  string `mapstructure:"scheme"`
 }
 
-type DiscoveryConfig struct {
-	ID          string                   `mapstructure:"id"`
-	Name        string                   `mapstructure:"name"`
-	Port        string                   `mapstructure:"port"`
-	Tags        []string                 `mapstructure:"tags"`
-	Address     string                   `mapstructure:"address"`
-	HealthCheck DiscoveryHealthCheckConf `mapstructure:"health_check"`
+type RegistryConfig struct {
+	ID          string                  `mapstructure:"id"`
+	Name        string                  `mapstructure:"name"`
+	Port        string                  `mapstructure:"port"`
+	Tags        []string                `mapstructure:"tags"`
+	Address     string                  `mapstructure:"address"`
+	HealthCheck RegistryHealthCheckConf `mapstructure:"health_check"`
 }
 
-type DiscoveryHealthCheckConf struct {
+type RegistryHealthCheckConf struct {
 	URI                            string `mapstructure:"uri"`
 	Timeout                        string `mapstructure:"timeout"`
 	Interval                       string `mapstructure:"interval"`

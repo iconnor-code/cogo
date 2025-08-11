@@ -10,6 +10,11 @@ import (
 	"github.com/spf13/viper"
 )
 
+var (
+	configOnce     sync.Once
+	configInstance *Config
+)
+
 type Config struct {
 	rwmutex  sync.RWMutex
 	value    core.IConfVal
@@ -24,14 +29,17 @@ func WithFilePath(filepath string) core.ConfigOption {
 }
 
 func NewConfig(val core.IConfVal, opts ...core.ConfigOption) (*Config, error) {
-	ct := &Config{}
-	for _, opt := range opts {
-		err := opt(ct)
-		if err != nil {
-			return nil, cerrs.Wrap(err, "applying config option error")
+	var err error
+	configOnce.Do(func() {
+		configInstance = &Config{}
+		for _, opt := range opts {
+			err = opt(configInstance)
+			if err != nil {
+				err = cerrs.Wrap(err, "applying config option error")
+			}
 		}
-	}
-	return ct, nil
+	})
+	return configInstance, err
 }
 
 func (ct *Config) Get(key string) any {
