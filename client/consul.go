@@ -2,30 +2,31 @@
 package client
 
 import (
-	consul "github.com/hashicorp/consul/api"
+	kitconsul "github.com/go-kit/kit/sd/consul"
+	"github.com/hashicorp/consul/api"
 	"github.com/iconnor-code/cogo/core"
 )
 
 type Consul struct {
-	config *consul.Config
-	client *consul.Client
+	registerClient kitconsul.Client
 }
 
 func NewConsul(config core.IConfig) *Consul {
-	consulConfig := &consul.Config{
-		Address: config.Get("consul.address").(string),
-		Scheme:  config.Get("consul.scheme").(string),
-	}
-	consul, err := consul.NewClient(consulConfig)
+	defaultConfig := api.DefaultConfig()
+	defaultConfig.Address = config.Get("consul.address").(string)
+
+	registerConfig := defaultConfig
+	registerConfig.Scheme = config.Get("registry.schema").(string)
+	registerAPIClient, err := api.NewClient(registerConfig)
 	if err != nil {
 		panic(err)
 	}
+	registerClient := kitconsul.NewClient(registerAPIClient)
 	return &Consul{
-		config: consulConfig,
-		client: consul,
+		registerClient: registerClient,
 	}
 }
 
-func (c *Consul) GetKitConsul() *consul.Client {
-	return c.client
+func (c *Consul) GetRegisterClient() kitconsul.Client {
+	return c.registerClient
 }

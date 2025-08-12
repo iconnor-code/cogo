@@ -117,7 +117,13 @@ func (l *Logger) withFields() error {
 func (l *Logger) convertFields(fields ...any) []zap.Field {
 	zapFields := make([]zap.Field, 0, len(fields))
 	for _, field := range fields {
-		zapFields = append(zapFields, field.(zap.Field))
+		if f, ok := field.(zap.Field); ok {
+			zapFields = append(zapFields, f)
+		} else if e, ok := field.(error); ok {
+			zapFields = append(zapFields, zap.Error(e))
+		} else {
+			zapFields = append(zapFields, zap.Any("field", field))
+		}
 	}
 	return zapFields
 }

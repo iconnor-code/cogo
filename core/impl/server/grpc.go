@@ -12,7 +12,7 @@ import (
 )
 
 type GrpcServer struct {
-	conf       map[string]any
+	conf       core.IConfig
 	logger     core.ILogger
 	listener   net.Listener
 	registry   core.IRegistry
@@ -28,19 +28,15 @@ func WithGrpcRegistry(registry core.IRegistry) core.ServerOption {
 }
 
 func NewGrpcServer(config core.IConfig, logger core.ILogger, bs *grpc.Server, opts ...core.ServerOption) (*GrpcServer, error) {
-	conf, ok := config.Get("grpc").(map[string]any)
-	if !ok {
-		return nil, cerrs.New("grpc config error")
-	}
 	s := &GrpcServer{
-		conf:       conf,
+		conf:       config,
 		logger:     logger,
 		baseServer: bs,
 	}
 	for _, opt := range opts {
 		opt(s)
 	}
-	listener, err := net.Listen("tcp", s.conf["listen"].(string))
+	listener, err := net.Listen("tcp", s.conf.Get("grpc.listen").(string))
 	if err != nil {
 		return nil, cerrs.Wrap(err)
 	}
@@ -50,7 +46,7 @@ func NewGrpcServer(config core.IConfig, logger core.ILogger, bs *grpc.Server, op
 
 func (s *GrpcServer) Start() error {
 	go func() {
-		s.logger.Info("grpc server start", zap.String("listen", s.conf["listen"].(string)))
+		s.logger.Info("grpc server start", zap.String("listen", s.conf.Get("grpc.listen").(string)))
 		err := s.baseServer.Serve(s.listener)
 		if err != nil {
 			s.logger.Error("grpc server start failed", zap.Error(err))
@@ -58,7 +54,6 @@ func (s *GrpcServer) Start() error {
 	}()
 
 	if s.registry != nil {
-		s.logger.Info("grpc server register", zap.String("name", s.conf["name"].(string)), zap.String("addr", s.conf["addr"].(string)))
 		if err := s.registry.Register(context.Background()); err != nil {
 			return cerrs.Wrap(err)
 		}

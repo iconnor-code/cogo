@@ -8,6 +8,7 @@ import (
 	"github.com/iconnor-code/cogo/client"
 	"github.com/iconnor-code/cogo/config"
 	"github.com/iconnor-code/cogo/core"
+	"go.uber.org/zap"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -43,6 +44,8 @@ func (r *Registry) etcdRegister(ctx context.Context) error {
 		return cerrs.Wrap(err)
 	}
 	r.keepAlive(ctx)
+
+	r.logger.Info("etcd register", zap.String("key", r.config.Get("registry.name").(string)), zap.String("value", r.id), zap.Int64("lease_id", int64(r.leaseID)), zap.Int64("lease_ttl", r.leaseTTL))
 
 	return nil
 }

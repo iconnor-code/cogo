@@ -71,7 +71,6 @@ type ConsulConfig struct {
 }
 
 type RegistryConfig struct {
-	ID          string                  `mapstructure:"id"`
 	Name        string                  `mapstructure:"name"`
 	Port        string                  `mapstructure:"port"`
 	Tags        []string                `mapstructure:"tags"`

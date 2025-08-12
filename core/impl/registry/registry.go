@@ -40,7 +40,7 @@ func NewRegistry(conf core.IConfig, logger core.ILogger, opts ...core.RegistryOp
 
 func (r *Registry) Register(ctx context.Context) error {
 	if r.consulClient != nil {
-		return r.kitconsulRegister(ctx)
+		return r.kitconsulRegister()
 	}
 	if r.etcdClient != nil {
 		return r.etcdRegister(ctx)
@@ -50,7 +50,7 @@ func (r *Registry) Register(ctx context.Context) error {
 
 func (r *Registry) DeRegister(ctx context.Context) error {
 	if r.consulClient != nil {
-		return r.kitconsulDeRegister(ctx)
+		return r.kitconsulDeRegister()
 	}
 	if r.etcdClient != nil {
 		return r.etcdDeRegister(ctx)

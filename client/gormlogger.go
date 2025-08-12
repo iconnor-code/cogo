@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/iconnor-code/cogo/core"
@@ -31,15 +32,15 @@ func (l *GormZapLogger) LogMode(level logger.LogLevel) logger.Interface {
 }
 
 func (l *GormZapLogger) Info(ctx context.Context, msg string, data ...any) {
-	l.logger.Info(msg, data...)
+	l.logger.Info(fmt.Sprintf(msg, data...))
 }
 
 func (l *GormZapLogger) Warn(ctx context.Context, msg string, data ...any) {
-	l.logger.Warn(msg, data...)
+	l.logger.Warn(fmt.Sprintf(msg, data...))
 }
 
 func (l *GormZapLogger) Error(ctx context.Context, msg string, data ...any) {
-	l.logger.Error(msg, data...)
+	l.logger.Error(fmt.Sprintf(msg, data...))
 }
 
 func (l *GormZapLogger) Trace(ctx context.Context, begin time.Time, fc func() (sql string, rowsAffected int64), err error) {

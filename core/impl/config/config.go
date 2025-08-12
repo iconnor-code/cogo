@@ -17,7 +17,7 @@ var (
 
 type Config struct {
 	rwmutex  sync.RWMutex
-	value    core.IConfVal
+	value    map[string]any
 	filepath string
 }
 
@@ -38,6 +38,7 @@ func NewConfig(val core.IConfVal, opts ...core.ConfigOption) (*Config, error) {
 				err = cerrs.Wrap(err, "applying config option error")
 			}
 		}
+		err = configInstance.ReLoad()
 	})
 	return configInstance, err
 }
@@ -46,15 +47,15 @@ func (ct *Config) Get(key string) any {
 	ct.rwmutex.RLock()
 	defer ct.rwmutex.RUnlock()
 
-	return ct.value.Get(key)
+	return viper.Get(key)
 }
 
-func (ct *Config) GetVal() core.IConfVal {
-	ct.rwmutex.RLock()
-	defer ct.rwmutex.RUnlock()
-
-	return ct.value
-}
+// func (ct *Config) GetVal() core.IConfVal {
+// 	ct.rwmutex.RLock()
+// 	defer ct.rwmutex.RUnlock()
+//
+// 	return ct.value
+// }
 
 func (ct *Config) ReLoad() error {
 	ct.rwmutex.Lock()
@@ -79,7 +80,7 @@ func (ct *Config) loadFromFile() error {
 		return cerrs.Wrap(err, fmt.Sprintf("reading config file error,filepath:%s", ct.filepath))
 	}
 
-	err := viper.Unmarshal(ct.value)
+	err := viper.Unmarshal(&ct.value)
 	if err != nil {
 		return cerrs.Wrap(err)
 	}
