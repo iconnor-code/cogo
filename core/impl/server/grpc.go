@@ -49,7 +49,7 @@ func (s *GrpcServer) Start() error {
 		s.logger.Info("grpc server start", zap.String("listen", s.conf.Get("grpc.listen").(string)))
 		err := s.baseServer.Serve(s.listener)
 		if err != nil {
-			s.logger.Error("grpc server start failed", zap.Error(err))
+			s.logger.Error("grpc server failed", zap.Error(err))
 		}
 	}()
 
@@ -73,10 +73,4 @@ func (s *GrpcServer) Stop() error {
 	}
 
 	return nil
-}
-
-func (s *GrpcServer) RegisterService(srvs []any, registars []func(bs *grpc.Server, srv any)) {
-	for i, srv := range srvs {
-		registars[i](s.baseServer, srv)
-	}
 }

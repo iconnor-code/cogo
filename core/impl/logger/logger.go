@@ -14,27 +14,13 @@ import (
 
 type Logger struct {
 	logger *zap.Logger
-	conf   map[string]any
+	conf   core.IConfig
 	fields []zap.Field
-	mode   string
 }
 
-func LoggerModeOption(mode string) core.LoggerOption {
-	return func(l core.ILogger) error {
-		l.(*Logger).mode = mode
-		return nil
-	}
-}
-
-func NewLogger(config core.IConfig, opts ...core.LoggerOption) (*Logger, error) {
+func NewLogger(config core.IConfig) (*Logger, error) {
 	logger := &Logger{
-		conf: config.Get("logger").(map[string]any),
-	}
-	for _, opt := range opts {
-		err := opt(logger)
-		if err != nil {
-			return nil, err
-		}
+		conf: config,
 	}
 	err := logger.init()
 	if err != nil {
@@ -99,7 +85,7 @@ func (l *Logger) init() error {
 	infoCore := zapcore.NewCore(fileEncoder, infoWriter, infoLevelEnabler)
 	errCore := zapcore.NewCore(fileEncoder, errWriter, errLevelEnabler)
 	coreArr := []zapcore.Core{infoCore, errCore}
-	if l.mode == "debug" {
+	if l.conf.Get("mode").(string) == "debug" {
 		coreArr = append(coreArr, zapcore.NewCore(stdoutEncoder, getStdoutWriter(), zap.DebugLevel))
 	}
 
@@ -146,24 +132,24 @@ func getStdoutEncoder() zapcore.Encoder {
 	return zapcore.NewConsoleEncoder(encodeConfig)
 }
 
-func getErrLogFileWriter(conf map[string]any) zapcore.WriteSyncer {
+func getErrLogFileWriter(conf core.IConfig) zapcore.WriteSyncer {
 	lumberJackLogger := &lumberjack.Logger{
-		Filename:   conf["file_path"].(string) + "/error.log",
-		MaxSize:    conf["max_size"].(int),
-		MaxAge:     conf["max_age"].(int),
-		MaxBackups: conf["max_backups"].(int),
+		Filename:   conf.Get("logger.file_path").(string) + "/error.log",
+		MaxSize:    conf.Get("logger.max_size").(int),
+		MaxAge:     conf.Get("logger.max_age").(int),
+		MaxBackups: conf.Get("logger.max_backups").(int),
 		Compress:   false,
 	}
 	return zapcore.AddSync(lumberJackLogger)
 }
 
-func getInfoLogFileWriter(conf map[string]any) zapcore.WriteSyncer {
+func getInfoLogFileWriter(conf core.IConfig) zapcore.WriteSyncer {
 	lumberJackLogger := &lumberjack.Logger{
-		Filename:   conf["file_path"].(string) + "/info.log", // 文件位置
-		MaxSize:    conf["max_size"].(int),                   // 进行切割之前,日志文件的最大大小(MB为单位)
-		MaxAge:     conf["max_age"].(int),                    // 保留旧文件的最大天数
-		MaxBackups: conf["max_backups"].(int),                // 保留旧文件的最大个数
-		Compress:   false,                                    // 是否压缩/归档旧文件
+		Filename:   conf.Get("logger.file_path").(string) + "/info.log", // 文件位置
+		MaxSize:    conf.Get("logger.max_size").(int),                   // 进行切割之前,日志文件的最大大小(MB为单位)
+		MaxAge:     conf.Get("logger.max_age").(int),                    // 保留旧文件的最大天数
+		MaxBackups: conf.Get("logger.max_backups").(int),                // 保留旧文件的最大个数
+		Compress:   false,                                               // 是否压缩/归档旧文件
 	}
 	return zapcore.AddSync(lumberJackLogger)
 }

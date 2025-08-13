@@ -16,7 +16,6 @@ func NewConsul(config core.IConfig) *Consul {
 	defaultConfig.Address = config.Get("consul.address").(string)
 
 	registerConfig := defaultConfig
-	registerConfig.Scheme = config.Get("registry.schema").(string)
 	registerAPIClient, err := api.NewClient(registerConfig)
 	if err != nil {
 		panic(err)

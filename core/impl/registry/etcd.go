@@ -39,13 +39,13 @@ func (r *Registry) etcdRegister(ctx context.Context) error {
 	}
 	r.leaseID = lease.ID
 
-	_, err = r.etcdClient.Put(ctx, r.config.Get("registry.name").(string), r.id, clientv3.WithLease(lease.ID))
+	_, err = r.etcdClient.Put(ctx, r.config.Get("registry.name").(string), r.instanceID, clientv3.WithLease(lease.ID))
 	if err != nil {
 		return cerrs.Wrap(err)
 	}
 	r.keepAlive(ctx)
 
-	r.logger.Info("etcd register", zap.String("key", r.config.Get("registry.name").(string)), zap.String("value", r.id), zap.Int64("lease_id", int64(r.leaseID)), zap.Int64("lease_ttl", r.leaseTTL))
+	r.logger.Info("etcd register", zap.String("key", r.config.Get("registry.name").(string)), zap.String("value", r.instanceID), zap.Int64("lease_id", int64(r.leaseID)), zap.Int64("lease_ttl", r.leaseTTL))
 
 	return nil
 }

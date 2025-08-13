@@ -28,7 +28,7 @@ func WithFilePath(filepath string) core.ConfigOption {
 	}
 }
 
-func NewConfig(val core.IConfVal, opts ...core.ConfigOption) (*Config, error) {
+func NewConfig(opts ...core.ConfigOption) (*Config, error) {
 	var err error
 	configOnce.Do(func() {
 		configInstance = &Config{}

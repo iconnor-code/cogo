@@ -3,8 +3,8 @@ package registry
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/client"
 	"github.com/iconnor-code/cogo/core"
@@ -12,7 +12,7 @@ import (
 )
 
 type Registry struct {
-	id           string
+	instanceID   string
 	config       core.IConfig
 	consulClient *client.Consul
 	logger       core.ILogger
@@ -25,7 +25,6 @@ type Registry struct {
 
 func NewRegistry(conf core.IConfig, logger core.ILogger, opts ...core.RegistryOption) (*Registry, error) {
 	registry := &Registry{
-		id:     uuid.New().String(),
 		logger: logger,
 		config: conf,
 	}
@@ -56,4 +55,16 @@ func (r *Registry) DeRegister(ctx context.Context) error {
 		return r.etcdDeRegister(ctx)
 	}
 	return cerrs.New("no registry client configured, please use WithKitConsulClient or WithEtcdClient to configure a registry client")
+}
+
+func (r *Registry) getInstanceID() string {
+	if r.instanceID != "" {
+		return r.instanceID
+	}
+	r.instanceID = fmt.Sprintf("%s-%s:%d",
+		r.config.Get("registry.name").(string),
+		r.config.Get("registry.address").(string),
+		r.config.Get("registry.port").(int),
+	)
+	return r.instanceID
 }
