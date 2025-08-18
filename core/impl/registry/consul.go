@@ -29,11 +29,16 @@ func (r *Registry) kitconsulRegister() error {
 		},
 	}
 	r.logger.Info("consul register", zap.String("id", serviceRegistration.ID), zap.String("name", serviceRegistration.Name), zap.String("address", serviceRegistration.Address), zap.Int("port", serviceRegistration.Port))
-	return r.consulClient.GetRegisterClient().Register(serviceRegistration)
+	return r.consulClient.DefaultClient().Register(serviceRegistration)
 }
 
 func (r *Registry) kitconsulDeRegister() error {
-	return r.consulClient.GetRegisterClient().Deregister(&consul.AgentServiceRegistration{
+	err := r.consulClient.DefaultClient().Deregister(&consul.AgentServiceRegistration{
 		ID: r.getInstanceID(),
 	})
+	if err != nil {
+		return err
+	}
+	r.logger.Info("consul deregister", zap.String("id", r.getInstanceID()))
+	return nil
 }

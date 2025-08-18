@@ -26,6 +26,6 @@ func NewConsul(config core.IConfig) *Consul {
 	}
 }
 
-func (c *Consul) GetRegisterClient() kitconsul.Client {
+func (c *Consul) DefaultClient() kitconsul.Client {
 	return c.registerClient
 }

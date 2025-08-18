@@ -1,3 +1,4 @@
+// Package config provides a configuration management implementation for the Cogo framework.
 package config
 
 import (
@@ -49,13 +50,6 @@ func (ct *Config) Get(key string) any {
 
 	return viper.Get(key)
 }
-
-// func (ct *Config) GetVal() core.IConfVal {
-// 	ct.rwmutex.RLock()
-// 	defer ct.rwmutex.RUnlock()
-//
-// 	return ct.value
-// }
 
 func (ct *Config) ReLoad() error {
 	ct.rwmutex.Lock()

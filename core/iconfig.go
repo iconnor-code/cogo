@@ -9,7 +9,6 @@ type (
 	ConfigOption func(IConfig) error
 	IConfig      interface {
 		Get(key string) any
-		// GetVal() IConfVal
 		ReLoad() error
 	}
 )
