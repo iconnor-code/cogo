@@ -9,6 +9,11 @@ import (
 
 type CerrCode int
 
+const (
+	SuccessCode    CerrCode = 0
+	UnknownErrCode CerrCode = 5000
+)
+
 type CError struct {
 	code  CerrCode
 	msg   string

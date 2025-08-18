@@ -32,7 +32,7 @@ func LoggingInterceptor(logger core.ILogger) grpc.UnaryServerInterceptor {
 		}
 
 		if customErr, ok := err.(*cerrs.CError); ok {
-			if customErr.GetCode() == cerrs.InternalErrCode {
+			if customErr.GetCode() == cerrs.UnknownErrCode {
 				logger.Error("internal custom error",
 					zap.Any("code", customErr.GetCode()),
 					zap.Any("msg", customErr.Error()),
@@ -41,7 +41,7 @@ func LoggingInterceptor(logger core.ILogger) grpc.UnaryServerInterceptor {
 					zap.Any("response", resp),
 					zap.Error(customErr),
 				)
-				return nil, cerrs.InternalError
+				return nil, cerrs.NewWithCode(cerrs.UnknownErrCode, "internal error occurred")
 			}
 			return nil, customErr
 		}
@@ -52,6 +52,6 @@ func LoggingInterceptor(logger core.ILogger) grpc.UnaryServerInterceptor {
 			zap.Any("response", resp),
 			zap.Error(err),
 		)
-		return nil, cerrs.InternalError
+		return nil, cerrs.NewWithCode(cerrs.UnknownErrCode, "internal error occurred")
 	}
 }

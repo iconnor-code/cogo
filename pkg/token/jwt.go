@@ -2,7 +2,7 @@
 package token
 
 import (
-	"math"
+	"maps"
 	"time"
 
 	"github.com/iconnor-code/cogo/cerrs"
@@ -13,10 +13,6 @@ import (
 )
 
 const JwtTokenKey = "access_token"
-
-type User struct {
-	ID uint32
-}
 
 type JwtToken struct {
 	config            core.IConfig
@@ -30,9 +26,9 @@ func NewJwtToken(config core.IConfig) *JwtToken {
 	return &JwtToken{config: config}
 }
 
-func (j *JwtToken) GenerateToken(user *User) error {
+func (j *JwtToken) GenerateToken(userInfo map[string]any) error {
 	refreshToken := j.generateRefreshToken()
-	accessToken, err := j.generateAccessToken(user)
+	accessToken, err := j.generateAccessToken(userInfo)
 	if err != nil {
 		return err
 	}
@@ -44,7 +40,7 @@ func (j *JwtToken) GenerateToken(user *User) error {
 	return nil
 }
 
-func (j *JwtToken) ParseToken(accessToken string) (*User, error) {
+func (j *JwtToken) ParseToken(accessToken string) (map[string]any, error) {
 	token, err := jwt.Parse(accessToken, func(token *jwt.Token) (any, error) {
 		return []byte(j.config.Get("jwt.access_secret").(string)), nil
 	})
@@ -55,25 +51,16 @@ func (j *JwtToken) ParseToken(accessToken string) (*User, error) {
 	if !ok {
 		return nil, cerrs.New("invalid access token claims")
 	}
-
-	userID, ok := claims["user_id"].(float64)
-	if !ok {
-		return nil, cerrs.New("invalid user_id in token claims")
-	}
-	if userID < 0 || userID > math.MaxUint32 {
-		return nil, cerrs.New("user_id out of range")
-	}
-	return &User{
-		ID: uint32(userID),
-	}, nil
+	return claims, nil
 }
 
-func (j *JwtToken) generateAccessToken(user *User) (string, error) {
+func (j *JwtToken) generateAccessToken(userInfo map[string]any) (string, error) {
 	t := jwt.New(jwt.SigningMethodHS256)
-	claims := jwt.MapClaims{
-		"user_id": user.ID,
-	}
+
+	claims := jwt.MapClaims{}
+	maps.Copy(claims, userInfo)
 	claims["exp"] = time.Now().Add(time.Duration(j.config.Get("jwt.access_expire").(int)) * time.Hour).Unix()
+
 	t.Claims = claims
 	s, err := t.SignedString([]byte(j.config.Get("jwt.access_secret").(string)))
 	return s, err
