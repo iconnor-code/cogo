@@ -22,11 +22,11 @@ func NewRedisStore(ctx context.Context, redisClient *client.RedisClient, key str
 }
 
 func (s *RedisStore) Set(id string, value string) error {
-	return s.redisClient.Set(s.ctx, fmt.Sprintf("%s:%s", s.key, id), value, s.expire).Err()
+	return s.redisClient.Set(s.ctx, fmt.Sprintf(s.key, id), value, s.expire).Err()
 }
 
 func (s *RedisStore) Get(id string, clear bool) string {
-	key := fmt.Sprintf("%s:%s", s.key, id)
+	key := fmt.Sprintf(s.key, id)
 	value, err := s.redisClient.Get(s.ctx, key).Result()
 	if err != nil {
 		return ""
@@ -38,7 +38,7 @@ func (s *RedisStore) Get(id string, clear bool) string {
 }
 
 func (s *RedisStore) Verify(id, answer string, clear bool) bool {
-	key := fmt.Sprintf("%s:%s", s.key, id)
+	key := fmt.Sprintf(s.key, id)
 	value, err := s.redisClient.Get(s.ctx, key).Result()
 	if err != nil {
 		return false
