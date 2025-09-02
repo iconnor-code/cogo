@@ -15,6 +15,9 @@ func LoggingInterceptor(logger core.ILogger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		start := time.Now()
 		defer func() {
+			if info.FullMethod == "/grpc.health.v1.Health/Check" {
+				return
+			}
 			logger.Info("request completed",
 				zap.String("method", info.FullMethod),
 				zap.Duration("took", time.Since(start)),
@@ -22,6 +25,10 @@ func LoggingInterceptor(logger core.ILogger) grpc.UnaryServerInterceptor {
 		}()
 
 		resp, err := handler(ctx, req)
+
+		if info.FullMethod == "/grpc.health.v1.Health/Check" {
+			return resp, nil
+		}
 		if err == nil {
 			logger.Debug("request detail",
 				zap.Any("request", req),

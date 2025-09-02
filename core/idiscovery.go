@@ -2,28 +2,12 @@ package core
 
 import (
 	"context"
+
+	"github.com/go-kit/kit/endpoint"
 )
-
-type DiscoveryLoadBalance string
-
-const (
-	RoundRobin DiscoveryLoadBalance = "roundrobin"
-	Random     DiscoveryLoadBalance = "random"
-)
-
-type IServerInstance interface {
-	GetName() string
-	GetAddr() string
-	GetID() string
-}
 
 type IDiscovery interface {
-	GetServer(ctx context.Context, serverName string) (IServerInstance, error)
+	Discover(ctx context.Context, serverName string, tags []string) (endpoint.Endpoint, error)
 }
 
 type DiscoveryOption func(d IDiscovery) error
-
-type IDiscoveryLoadBalance interface {
-	GetInstance(ctx context.Context, serverName string) (IServerInstance, error)
-	RefreshInstance(ctx context.Context, serverName string, instances []IServerInstance) error
-}

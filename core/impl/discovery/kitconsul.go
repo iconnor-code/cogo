@@ -3,139 +3,68 @@ package discovery
 
 import (
 	"context"
-	"fmt"
-	"sync"
+	"io"
+	"time"
 
+	"net/rpc"
+
+	"github.com/go-kit/kit/endpoint"
+	"github.com/go-kit/kit/sd"
 	kitconsul "github.com/go-kit/kit/sd/consul"
-	consul "github.com/hashicorp/consul/api"
-	"github.com/hashicorp/consul/api/watch"
-	"github.com/iconnor-code/cogo/cerrs"
+	kitlb "github.com/go-kit/kit/sd/lb"
+	"github.com/iconnor-code/cogo/client"
 	"github.com/iconnor-code/cogo/core"
 )
 
 type KitConsulDiscovery struct {
-	conf        core.IConfig
-	consul      kitconsul.Client
-	loadBalance core.DiscoveryLoadBalance
-	instances   sync.Map
-	lock        sync.RWMutex
+	logger core.ILogger
+	consul kitconsul.Client
 }
 
-func WithDLBOption(loadBalance core.DiscoveryLoadBalance) core.DiscoveryOption {
-	return func(d core.IDiscovery) error {
-		d.(*KitConsulDiscovery).loadBalance = loadBalance
-		return nil
-	}
-}
-
-func NewKitConsulDiscovery(conf core.IConfig) (*KitConsulDiscovery, error) {
-	consulConf := consul.DefaultConfig()
-	consulConf.Address = conf.Get("consul.address").(string)
-	consul, err := consul.NewClient(consulConf)
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
+func NewKitConsulDiscovery(logger core.ILogger, consul *client.Consul) *KitConsulDiscovery {
 	return &KitConsulDiscovery{
-		consul: kitconsul.NewClient(consul),
-	}, nil
+		logger: logger,
+		consul: consul.DefaultClient(),
+	}
 }
 
-func (kcd *KitConsulDiscovery) GetServer(ctx context.Context, serverName string) (core.IServerInstance, error) {
-	instances, ok := kcd.instances.Load(serverName)
-	if ok {
-		if dlb, ok := instances.(core.IDiscoveryLoadBalance); ok {
-			return dlb.GetInstance(ctx, serverName)
-		} else {
-			return nil, cerrs.New(fmt.Sprintf("wrong type of service discovery instances, servername:%s", serverName))
-		}
-	}
+func (kcd *KitConsulDiscovery) Discovery(serverName, methodName string, tags []string) endpoint.Endpoint {
+	// 创建服务发现实例
+	instancer := kitconsul.NewInstancer(kcd.consul, kcd.logger, serverName, tags, true)
 
-	kcd.lock.Lock()
-	defer kcd.lock.Unlock()
-
-	kcd.watchServersByName(ctx, serverName)
-
-	servers, _, err := kcd.consul.Service(serverName, "", true, nil)
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
-	serverInstances := make([]core.IServerInstance, len(servers))
-	for i, server := range servers {
-		serverInstances[i] = &ServerInstance{
-			ID:      server.Service.ID,
-			Name:    server.Service.Service,
-			Address: server.Service.Address,
-			Port:    server.Service.Port,
-			Tags:    server.Service.Tags,
-			Meta:    server.Service.Meta,
-		}
-	}
-	dlb := kcd.getLoadBalance(serverName)
-	err = dlb.RefreshInstance(ctx, serverName, serverInstances)
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
-	kcd.instances.Store(serverName, dlb)
-
-	return dlb.GetInstance(ctx, serverName)
-}
-
-func (kcd *KitConsulDiscovery) watchServersByName(ctx context.Context, serverName string) {
-	// 监控实例变化
-	go func() error {
-		params := make(map[string]any)
-		params["type"] = "service"
-		params["service"] = serverName
-		plan, err := watch.Parse(params)
+	// 创建工厂函数，用于为每个服务实例创建端点
+	factory := func(instance string) (endpoint.Endpoint, io.Closer, error) {
+		// 创建 RPC 客户端
+		rpcClient, err := rpc.Dial("tcp", instance)
 		if err != nil {
-			return cerrs.Wrap(err)
+			return nil, nil, err
 		}
-		plan.Handler = func(idx uint64, data any) {
-			if data == nil {
-				return
-			}
-			v, ok := data.([]*consul.ServiceEntry)
-			if !ok {
-				return
-			}
-			if len(v) == 0 {
-				kcd.instances.Store(serverName, nil)
-				return
-			}
-			healthInstances := make([]core.IServerInstance, len(v))
-			for _, service := range v {
-				if service.Checks.AggregatedStatus() == consul.HealthPassing {
-					healthInstances = append(healthInstances, &ServerInstance{
-						Name:    service.Service.Service,
-						Address: service.Service.Address,
-						Port:    service.Service.Port,
-					})
-				}
-			}
-			dlb := kcd.getLoadBalance(serverName)
-			err := dlb.RefreshInstance(ctx, serverName, healthInstances)
+
+		// 创建 go-kit 端点
+		endpoint := func(ctx context.Context, request any) (response any, err error) {
+			// 调用 RPC 方法
+			// 注意：这里需要根据你的实际 RPC 服务方法名来调整
+			methodName := "/grpc." + serverName + "." + methodName
+			err = rpcClient.Call(methodName, request, response)
 			if err != nil {
-				return
+				return nil, err
 			}
-			kcd.instances.Store(serverName, dlb)
+
+			return response, nil
 		}
-		defer plan.Stop()
-		plan.Run(kcd.conf.Get("discovery.address").(string))
-		return nil
-	}()
-}
 
-func (kcd *KitConsulDiscovery) getLoadBalance(serverName string) core.IDiscoveryLoadBalance {
-	if dlb, ok := kcd.instances.Load(serverName); ok {
-		return dlb.(core.IDiscoveryLoadBalance)
+		return endpoint, rpcClient, nil
 	}
 
-	switch kcd.loadBalance {
-	case core.Random:
-		return NewRandomLoadBalance()
-	case core.RoundRobin:
-		return NewRoundRobinLoadBalance()
-	default:
-		return NewRandomLoadBalance()
-	}
+	// 创建端点集合器，用于管理服务实例的端点
+	endpointer := sd.NewEndpointer(instancer, factory, kcd.logger)
+
+	// 创建负载均衡器
+	// 这里使用轮询策略，还可以选择随机、加权等策略
+	balancer := kitlb.NewRoundRobin(endpointer)
+
+	// 添加重试机制
+	retry := kitlb.Retry(3, 500*time.Millisecond, balancer)
+
+	return retry
 }

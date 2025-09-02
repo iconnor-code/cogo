@@ -8,24 +8,23 @@ import (
 )
 
 type Consul struct {
-	registerClient kitconsul.Client
+	defaultClient kitconsul.Client
 }
 
 func NewConsul(config core.IConfig) *Consul {
 	defaultConfig := api.DefaultConfig()
 	defaultConfig.Address = config.Get("consul.address").(string)
 
-	registerConfig := defaultConfig
-	registerAPIClient, err := api.NewClient(registerConfig)
+	defaultConsul, err := api.NewClient(defaultConfig)
 	if err != nil {
 		panic(err)
 	}
-	registerClient := kitconsul.NewClient(registerAPIClient)
+	defaultClient := kitconsul.NewClient(defaultConsul)
 	return &Consul{
-		registerClient: registerClient,
+		defaultClient: defaultClient,
 	}
 }
 
 func (c *Consul) DefaultClient() kitconsul.Client {
-	return c.registerClient
+	return c.defaultClient
 }

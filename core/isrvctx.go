@@ -1,11 +1,8 @@
 package core
 
-import (
-	"context"
-	"time"
-)
-
 type SrvCtxKey string
+
+const SrvCtx SrvCtxKey = "srvctx"
 
 type IBizInfo interface {
 	GetBizID() uint32
@@ -18,12 +15,6 @@ type IUserInfo interface {
 }
 
 type ISrvCtx interface {
-	Ctx() context.Context
-	Deadline() (deadline time.Time, ok bool)
-	Done() <-chan struct{}
-	Err() error
-	Value(key any) any
-
 	Logger() ILogger
 	Config() IConfig
 	SetField(key SrvCtxKey, value any)

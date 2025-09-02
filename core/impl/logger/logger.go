@@ -2,6 +2,7 @@
 package logger
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/iconnor-code/cogo/cerrs"
@@ -27,6 +28,12 @@ func NewLogger(config core.IConfig) (*Logger, error) {
 		return nil, cerrs.Wrap(err)
 	}
 	return logger, nil
+}
+
+func (l *Logger) Log(fields ...any) error {
+	l.withFields()
+	l.logger.Info(fmt.Sprintf("%v", fields...))
+	return nil
 }
 
 func (l *Logger) Debug(msg string, fields ...any) {

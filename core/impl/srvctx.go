@@ -2,7 +2,6 @@ package impl
 
 import (
 	"context"
-	"time"
 
 	"github.com/iconnor-code/cogo/core"
 )
@@ -32,7 +31,6 @@ func (u *UserInfo) GetUserName() string {
 }
 
 type SrvCtx struct {
-	ctx      context.Context
 	logger   core.ILogger
 	config   core.IConfig
 	bizInfo  core.IBizInfo
@@ -42,30 +40,9 @@ type SrvCtx struct {
 
 func NewSrvCtx(ctx context.Context, logger core.ILogger, config core.IConfig) *SrvCtx {
 	return &SrvCtx{
-		ctx:    ctx,
 		logger: logger,
 		config: config,
 	}
-}
-
-func (s *SrvCtx) Ctx() context.Context {
-	return s.ctx
-}
-
-func (s *SrvCtx) Deadline() (deadline time.Time, ok bool) {
-	return s.ctx.Deadline()
-}
-
-func (s *SrvCtx) Done() <-chan struct{} {
-	return s.ctx.Done()
-}
-
-func (s *SrvCtx) Err() error {
-	return s.ctx.Err()
-}
-
-func (s *SrvCtx) Value(key any) any {
-	return s.ctx.Value(key)
 }
 
 func (s *SrvCtx) Logger() core.ILogger {

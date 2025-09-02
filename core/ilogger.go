@@ -1,6 +1,7 @@
 package core
 
 type ILogger interface {
+	Log(...any) error
 	Debug(msg string, fields ...any)
 	Info(msg string, fields ...any)
 	Warn(msg string, fields ...any)
