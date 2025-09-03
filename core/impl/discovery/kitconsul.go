@@ -3,10 +3,9 @@ package discovery
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
-
-	"net/rpc"
 
 	"github.com/go-kit/kit/endpoint"
 	"github.com/go-kit/kit/sd"
@@ -14,6 +13,8 @@ import (
 	kitlb "github.com/go-kit/kit/sd/lb"
 	"github.com/iconnor-code/cogo/client"
 	"github.com/iconnor-code/cogo/core"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type KitConsulDiscovery struct {
@@ -28,32 +29,29 @@ func NewKitConsulDiscovery(logger core.ILogger, consul *client.Consul) *KitConsu
 	}
 }
 
-func (kcd *KitConsulDiscovery) Discovery(serverName, methodName string, tags []string) endpoint.Endpoint {
+func (kcd *KitConsulDiscovery) Discover(serverName, serviceName, methodName string, tags []string, resp any) endpoint.Endpoint {
 	// 创建服务发现实例
 	instancer := kitconsul.NewInstancer(kcd.consul, kcd.logger, serverName, tags, true)
 
 	// 创建工厂函数，用于为每个服务实例创建端点
 	factory := func(instance string) (endpoint.Endpoint, io.Closer, error) {
-		// 创建 RPC 客户端
-		rpcClient, err := rpc.Dial("tcp", instance)
+		conn, err := grpc.NewClient(instance, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			return nil, nil, err
 		}
 
-		// 创建 go-kit 端点
 		endpoint := func(ctx context.Context, request any) (response any, err error) {
-			// 调用 RPC 方法
-			// 注意：这里需要根据你的实际 RPC 服务方法名来调整
-			methodName := "/grpc." + serverName + "." + methodName
-			err = rpcClient.Call(methodName, request, response)
+			// 构建完整的 gRPC 方法路径
+			fullMethodName := fmt.Sprintf("/%s.%s/%s", serverName, serviceName, methodName)
+
+			err = conn.Invoke(ctx, fullMethodName, request, resp, grpc.StaticMethod())
 			if err != nil {
 				return nil, err
 			}
 
-			return response, nil
+			return resp, nil
 		}
-
-		return endpoint, rpcClient, nil
+		return endpoint, conn, nil
 	}
 
 	// 创建端点集合器，用于管理服务实例的端点
