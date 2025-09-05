@@ -5,8 +5,10 @@ type SrvCtxKey string
 const SrvCtx SrvCtxKey = "srvctx"
 
 type IBizInfo interface {
-	GetBizID() uint32
+	GetBizID() int32
 	GetBizName() string
+	GetCallerBizID() int32
+	GetCallerBizName() string
 }
 
 type IUserInfo interface {

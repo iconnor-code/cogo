@@ -14,7 +14,6 @@ import (
 	"github.com/iconnor-code/cogo/client"
 	"github.com/iconnor-code/cogo/core"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 type KitConsulDiscovery struct {
@@ -29,13 +28,13 @@ func NewKitConsulDiscovery(logger core.ILogger, consul *client.Consul) *KitConsu
 	}
 }
 
-func (kcd *KitConsulDiscovery) Discover(serverName, serviceName, methodName string, tags []string, resp any) endpoint.Endpoint {
+func (kcd *KitConsulDiscovery) Discover(serverName, serviceName, methodName string, tags []string, resp any, opts ...grpc.DialOption) endpoint.Endpoint {
 	// 创建服务发现实例
 	instancer := kitconsul.NewInstancer(kcd.consul, kcd.logger, serverName, tags, true)
 
 	// 创建工厂函数，用于为每个服务实例创建端点
 	factory := func(instance string) (endpoint.Endpoint, io.Closer, error) {
-		conn, err := grpc.NewClient(instance, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpc.NewClient(instance, opts...)
 		if err != nil {
 			return nil, nil, err
 		}

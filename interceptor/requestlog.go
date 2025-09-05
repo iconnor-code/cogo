@@ -11,8 +11,10 @@ import (
 	"google.golang.org/grpc"
 )
 
-func LoggingInterceptor(logger core.ILogger) grpc.UnaryServerInterceptor {
+func RequestLogInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		srvCtx := ctx.Value(core.SrvCtx).(core.ISrvCtx)
+		logger := srvCtx.Logger()
 		start := time.Now()
 		defer func() {
 			if info.FullMethod == "/grpc.health.v1.Health/Check" {

@@ -6,7 +6,6 @@ import (
 
 	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/client"
-	"github.com/iconnor-code/cogo/config"
 	"github.com/iconnor-code/cogo/core"
 	"go.uber.org/zap"
 
@@ -14,7 +13,7 @@ import (
 )
 
 type KitEtcdRetistry struct {
-	config      config.IConfig
+	config      core.IConfig
 	registryKey string
 }
 

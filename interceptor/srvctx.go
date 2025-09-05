@@ -4,13 +4,13 @@ import (
 	"context"
 
 	"github.com/iconnor-code/cogo/core"
-	"github.com/iconnor-code/cogo/core/impl"
+	"github.com/iconnor-code/cogo/core/impl/srvctx"
 	"google.golang.org/grpc"
 )
 
-func SrvCtxInterceptor(logger core.ILogger, config core.IConfig) grpc.UnaryServerInterceptor {
+func SrvCtxInterceptor(config core.IConfig, logger core.ILogger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		srvCtx := impl.NewSrvCtx(ctx, logger, config)
+		srvCtx := srvctx.NewSrvCtx(logger, config)
 		ctx = context.WithValue(ctx, core.SrvCtx, srvCtx)
 		return handler(ctx, req)
 	}

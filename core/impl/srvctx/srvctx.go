@@ -1,17 +1,29 @@
-package impl
+package srvctx
 
 import (
-	"context"
-
 	"github.com/iconnor-code/cogo/core"
 )
 
 type BizInfo struct {
-	BizID   uint32
-	BizName string
+	OriginalBizID   []int32  `json:"original_biz_id"`
+	OriginalBizName []string `json:"original_biz_name"`
+	BizID           int32    `json:"biz_id"`
+	BizName         string   `json:"biz_name"`
 }
 
-func (b *BizInfo) GetBizID() uint32 {
+func (b *BizInfo) GetCallerBizID() int32 {
+	if len(b.OriginalBizID) == 0 {
+		return 0
+	}
+	return b.OriginalBizID[len(b.OriginalBizID)-1]
+}
+func (b *BizInfo) GetCallerBizName() string {
+	if len(b.OriginalBizName) == 0 {
+		return ""
+	}
+	return b.OriginalBizName[len(b.OriginalBizName)-1]
+}
+func (b *BizInfo) GetBizID() int32 {
 	return b.BizID
 }
 func (b *BizInfo) GetBizName() string {
@@ -19,15 +31,15 @@ func (b *BizInfo) GetBizName() string {
 }
 
 type UserInfo struct {
-	UserID   uint32
-	UserName string
+	UserID    uint32 `json:"user_id"`
+	UserEmail string `json:"user_email"`
 }
 
 func (u *UserInfo) GetUserID() uint32 {
 	return u.UserID
 }
 func (u *UserInfo) GetUserName() string {
-	return u.UserName
+	return u.UserEmail
 }
 
 type SrvCtx struct {
@@ -38,7 +50,7 @@ type SrvCtx struct {
 	ext      map[core.SrvCtxKey]any
 }
 
-func NewSrvCtx(ctx context.Context, logger core.ILogger, config core.IConfig) *SrvCtx {
+func NewSrvCtx(logger core.ILogger, config core.IConfig) *SrvCtx {
 	return &SrvCtx{
 		logger: logger,
 		config: config,

@@ -10,8 +10,10 @@ import (
 	"google.golang.org/grpc"
 )
 
-func RecoveryInterceptor(logger core.ILogger) grpc.UnaryServerInterceptor {
+func RecoveryInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (res any, err error) {
+		srvCtx := ctx.Value(core.SrvCtx).(core.ISrvCtx)
+		logger := srvCtx.Logger()
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("panic error",
