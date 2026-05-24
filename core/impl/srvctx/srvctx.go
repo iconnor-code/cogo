@@ -54,6 +54,7 @@ func NewSrvCtx(logger core.ILogger, config core.IConfig) *SrvCtx {
 	return &SrvCtx{
 		logger: logger,
 		config: config,
+		ext:    make(map[core.SrvCtxKey]any),
 	}
 }
 

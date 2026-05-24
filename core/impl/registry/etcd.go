@@ -37,47 +37,48 @@ func (r *Registry) etcdRegister(ctx context.Context) error {
 		return cerrs.Wrap(err)
 	}
 	r.leaseID = lease.ID
+	instanceID := r.getInstanceID()
 
-	_, err = r.etcdClient.Put(ctx, r.config.Get("registry.name").(string), r.instanceID, clientv3.WithLease(lease.ID))
+	_, err = r.etcdClient.Put(ctx, r.config.Get("registry.name").(string), instanceID, clientv3.WithLease(lease.ID))
 	if err != nil {
 		return cerrs.Wrap(err)
 	}
 	r.keepAlive(ctx)
 
-	r.logger.Info("etcd register", zap.String("key", r.config.Get("registry.name").(string)), zap.String("value", r.instanceID), zap.Int64("lease_id", int64(r.leaseID)), zap.Int64("lease_ttl", r.leaseTTL))
+	r.logger.Info("etcd register", zap.String("key", r.config.Get("registry.name").(string)), zap.String("value", instanceID), zap.Int64("lease_id", int64(r.leaseID)), zap.Int64("lease_ttl", r.leaseTTL))
 
 	return nil
 }
 
-func (r *Registry) keepAlive(ctx context.Context) error {
-	var err *error
-
+func (r *Registry) keepAlive(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	r.leaseCancel = cancel
 
 	go func() {
-		ticker := time.NewTicker(time.Duration(r.leaseTTL-1) * time.Second)
+		interval := r.leaseTTL - 1
+		if interval <= 0 {
+			interval = 1
+		}
+		ticker := time.NewTicker(time.Duration(interval) * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				_, doneerr := r.etcdClient.Revoke(context.Background(), r.leaseID)
 				if doneerr != nil {
-					*err = doneerr
+					r.logger.Error("etcd revoke lease failed", zap.Error(doneerr), zap.Int64("lease_id", int64(r.leaseID)))
 					return
 				}
 				return
 			case <-ticker.C:
 				_, keepAliveErr := r.etcdClient.KeepAliveOnce(ctx, r.leaseID)
 				if keepAliveErr != nil {
-					*err = keepAliveErr
+					r.logger.Error("etcd keepalive failed", zap.Error(keepAliveErr), zap.Int64("lease_id", int64(r.leaseID)))
 					return
 				}
 			}
 		}
 	}()
-
-	return *err
 }
 
 func (r *Registry) etcdDeRegister(ctx context.Context) error {

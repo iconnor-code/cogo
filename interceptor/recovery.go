@@ -3,7 +3,9 @@ package interceptor
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
 
 	"go.uber.org/zap"
@@ -23,6 +25,8 @@ func RecoveryInterceptor() grpc.UnaryServerInterceptor {
 					zap.Any("error", r),
 					zap.StackSkip("stack", 1),
 				)
+				err = cerrs.WrapWithCode(fmt.Errorf("%v", r), cerrs.UnknownErrCode, "internal error occurred")
+				res = nil
 			}
 		}()
 		return handler(ctx, req)

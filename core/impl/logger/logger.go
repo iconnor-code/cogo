@@ -31,44 +31,39 @@ func NewLogger(config core.IConfig) (*Logger, error) {
 }
 
 func (l *Logger) Log(fields ...any) error {
-	l.withFields()
-	l.logger.Info(fmt.Sprintf("%v", fields...))
+	l.withFields().Info(fmt.Sprintf("%v", fields...))
 	return nil
 }
 
 func (l *Logger) Debug(msg string, fields ...any) {
-	l.withFields()
-	l.logger.Debug(msg, l.convertFields(fields...)...)
+	l.withFields().Debug(msg, l.convertFields(fields...)...)
 }
 
 func (l *Logger) Info(msg string, fields ...any) {
-	l.withFields()
-	l.logger.Info(msg, l.convertFields(fields...)...)
+	l.withFields().Info(msg, l.convertFields(fields...)...)
 }
 
 func (l *Logger) Warn(msg string, fields ...any) {
-	l.withFields()
-	l.logger.Warn(msg, l.convertFields(fields...)...)
+	l.withFields().Warn(msg, l.convertFields(fields...)...)
 }
 
 func (l *Logger) Error(msg string, fields ...any) {
-	l.withFields()
-	l.logger.Error(msg, l.convertFields(fields...)...)
+	l.withFields().Error(msg, l.convertFields(fields...)...)
 }
 
 func (l *Logger) Fatal(msg string, fields ...any) {
-	l.withFields()
-	l.logger.Fatal(msg, l.convertFields(fields...)...)
+	l.withFields().Fatal(msg, l.convertFields(fields...)...)
 }
 
 func (l *Logger) Panic(msg string, fields ...any) {
-	l.withFields()
-	l.logger.Panic(msg, l.convertFields(fields...)...)
+	l.withFields().Panic(msg, l.convertFields(fields...)...)
 }
 
 func (l *Logger) AddGlobalFields(fields ...any) {
 	for _, field := range fields {
-		l.fields = append(l.fields, field.(zap.Field))
+		if f, ok := field.(zap.Field); ok {
+			l.fields = append(l.fields, f)
+		}
 	}
 }
 
@@ -100,11 +95,11 @@ func (l *Logger) init() error {
 	return nil
 }
 
-func (l *Logger) withFields() error {
-	for _, field := range l.fields {
-		l.logger.With(field)
+func (l *Logger) withFields() *zap.Logger {
+	if len(l.fields) > 0 {
+		return l.logger.With(l.fields...)
 	}
-	return nil
+	return l.logger
 }
 
 func (l *Logger) convertFields(fields ...any) []zap.Field {

@@ -28,7 +28,7 @@ func NewKitConsulDiscovery(logger core.ILogger, consul *client.Consul) *KitConsu
 	}
 }
 
-func (kcd *KitConsulDiscovery) Discover(serverName, serviceName, methodName string, tags []string, resp any, opts ...grpc.DialOption) endpoint.Endpoint {
+func (kcd *KitConsulDiscovery) Discover(_ context.Context, serverName, serviceName, methodName string, tags []string, resp any, opts ...grpc.DialOption) (endpoint.Endpoint, error) {
 	// 创建服务发现实例
 	instancer := kitconsul.NewInstancer(kcd.consul, kcd.logger, serverName, tags, true)
 
@@ -63,5 +63,5 @@ func (kcd *KitConsulDiscovery) Discover(serverName, serviceName, methodName stri
 	// 添加重试机制
 	retry := kitlb.Retry(3, 500*time.Millisecond, balancer)
 
-	return retry
+	return retry, nil
 }

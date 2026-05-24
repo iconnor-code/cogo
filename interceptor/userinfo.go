@@ -2,6 +2,8 @@ package interceptor
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"slices"
 
 	"github.com/iconnor-code/cogo/core"
@@ -38,11 +40,51 @@ func UserInfoInterceptor(whiteList ...string) grpc.UnaryServerInterceptor {
 			return nil, status.Errorf(codes.InvalidArgument, "access_token is invalid")
 		}
 
+		userID, err := toUint32(userInfo["user_id"])
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "access_token user_id is invalid")
+		}
+		userEmail, ok := userInfo["user_email"].(string)
+		if !ok || userEmail == "" {
+			return nil, status.Errorf(codes.InvalidArgument, "access_token user_email is invalid")
+		}
+
 		srvCtx.SetUserInfo(&srvctx.UserInfo{
-			UserID:    userInfo["user_id"].(uint32),
-			UserEmail: userInfo["user_email"].(string),
+			UserID:    userID,
+			UserEmail: userEmail,
 		})
 
 		return handler(ctx, req)
+	}
+}
+
+func toUint32(v any) (uint32, error) {
+	switch id := v.(type) {
+	case uint32:
+		return id, nil
+	case uint64:
+		return uint32(id), nil
+	case int:
+		if id < 0 {
+			return 0, fmt.Errorf("user_id is negative: %d", id)
+		}
+		return uint32(id), nil
+	case int32:
+		if id < 0 {
+			return 0, fmt.Errorf("user_id is negative: %d", id)
+		}
+		return uint32(id), nil
+	case int64:
+		if id < 0 || id > math.MaxUint32 {
+			return 0, fmt.Errorf("user_id out of range: %d", id)
+		}
+		return uint32(id), nil
+	case float64:
+		if id < 0 || id > math.MaxUint32 {
+			return 0, fmt.Errorf("user_id out of range: %f", id)
+		}
+		return uint32(id), nil
+	default:
+		return 0, fmt.Errorf("unsupported user_id type: %T", v)
 	}
 }
