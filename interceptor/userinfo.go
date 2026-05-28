@@ -63,6 +63,9 @@ func toUint32(v any) (uint32, error) {
 	case uint32:
 		return id, nil
 	case uint64:
+		if id > math.MaxUint32 {
+			return 0, fmt.Errorf("user_id out of range: %d", id)
+		}
 		return uint32(id), nil
 	case int:
 		if id < 0 {
@@ -82,6 +85,9 @@ func toUint32(v any) (uint32, error) {
 	case float64:
 		if id < 0 || id > math.MaxUint32 {
 			return 0, fmt.Errorf("user_id out of range: %f", id)
+		}
+		if math.Trunc(id) != id {
+			return 0, fmt.Errorf("user_id is not an integer: %f", id)
 		}
 		return uint32(id), nil
 	default:

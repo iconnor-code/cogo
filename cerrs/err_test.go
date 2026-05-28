@@ -26,10 +26,16 @@ func TestWrapUnwrapIsAs(t *testing.T) {
 	if !Is(wrapped, base) {
 		t.Fatalf("expected Is(wrapped, base) == true")
 	}
+	if !errors.Is(wrapped, base) {
+		t.Fatalf("expected standard errors.Is(wrapped, base) == true")
+	}
 
 	var cerr *CError
 	if !As(wrapped, &cerr) {
 		t.Fatalf("expected As to extract *CError")
+	}
+	if !errors.As(wrapped, &cerr) {
+		t.Fatalf("expected standard errors.As to extract *CError")
 	}
 	if cerr.GetCode() != UnknownErrCode {
 		t.Fatalf("expected code %d, got %d", UnknownErrCode, cerr.GetCode())

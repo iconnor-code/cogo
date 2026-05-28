@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -40,9 +41,13 @@ func (s *HTTPServer) Start() error {
 			Handler: s.handler,
 			Addr:    s.conf["listen"].(string),
 		}
+		listener, err := net.Listen("tcp", httpSrv.Addr)
+		if err != nil {
+			return nil, cerrs.Wrap(err)
+		}
 		go func() {
 			s.logger.Info("http server start", zap.String("listen", s.conf["listen"].(string)))
-			err := httpSrv.ListenAndServe()
+			err := httpSrv.Serve(listener)
 			if err != nil && err != http.ErrServerClosed {
 				s.logger.Error("http server start failed", zap.Error(err))
 			}
@@ -55,9 +60,13 @@ func (s *HTTPServer) Start() error {
 			Handler: s.handler,
 			Addr:    s.conf["listen"].(string),
 		}
+		listener, err := net.Listen("tcp", httpsSrv.Addr)
+		if err != nil {
+			return nil, cerrs.Wrap(err)
+		}
 		go func() {
 			s.logger.Info("https server start", zap.String("listen", s.conf["listen"].(string)))
-			err := httpsSrv.ListenAndServeTLS(sslConfMap["cert_file"], sslConfMap["key_file"])
+			err := httpsSrv.ServeTLS(listener, sslConfMap["cert_file"], sslConfMap["key_file"])
 			if err != nil && err != http.ErrServerClosed {
 				s.logger.Error("https server start failed", zap.Error(err))
 			}

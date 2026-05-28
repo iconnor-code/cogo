@@ -32,6 +32,10 @@ func (e *CError) GetCode() CerrCode {
 	return e.code
 }
 
+func (e *CError) Unwrap() error {
+	return e.cause
+}
+
 func New(msg string) error {
 	return &CError{
 		track: caller(),
@@ -83,12 +87,6 @@ func Unwrap(err error) error {
 }
 
 func Is(err, target error) bool {
-	if err == nil || target == nil {
-		return err == target
-	}
-	if cerr, ok := err.(*CError); ok {
-		return cerr.cause == target
-	}
 	return errors.Is(err, target)
 }
 

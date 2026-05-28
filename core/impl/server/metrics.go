@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"time"
 
@@ -34,9 +35,13 @@ func (s *MetricsServer) Start() error {
 		Addr:    s.conf["listen"].(string),
 		Handler: promhttp.Handler(),
 	}
+	listener, err := net.Listen("tcp", httpSrv.Addr)
+	if err != nil {
+		return cerrs.Wrap(err)
+	}
 	go func() {
 		s.logger.Info("metrics server start", zap.String("listen", s.conf["listen"].(string)))
-		if listenErr := httpSrv.ListenAndServe(); listenErr != nil {
+		if listenErr := httpSrv.Serve(listener); listenErr != nil && listenErr != http.ErrServerClosed {
 			s.logger.Error("metrics server start failed", zap.Error(listenErr))
 		}
 	}()
@@ -47,6 +52,9 @@ func (s *MetricsServer) Start() error {
 func (s *MetricsServer) Stop() error {
 	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*5)
 	defer cancel()
+	if s.server == nil {
+		return nil
+	}
 	if err := s.server.Shutdown(ctx); err != nil {
 		return err
 	}

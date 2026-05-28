@@ -43,6 +43,8 @@ func TestToUint32(t *testing.T) {
 		{name: "float64", in: float64(3), want: 3},
 		{name: "negative", in: int(-1), wantErr: true},
 		{name: "overflow", in: int64(math.MaxUint32 + 1), wantErr: true},
+		{name: "uint64 overflow", in: uint64(math.MaxUint32 + 1), wantErr: true},
+		{name: "float64 fraction", in: float64(1.5), wantErr: true},
 		{name: "unsupported", in: "x", wantErr: true},
 	}
 

@@ -43,9 +43,12 @@ func (j *JwtToken) GenerateToken(userInfo map[string]any) error {
 func (j *JwtToken) ParseToken(accessToken string) (map[string]any, error) {
 	token, err := jwt.Parse(accessToken, func(token *jwt.Token) (any, error) {
 		return []byte(j.config.Get("jwt.access_secret").(string)), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
 		return nil, cerrs.Wrap(err)
+	}
+	if token == nil || !token.Valid {
+		return nil, cerrs.New("invalid access token")
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
