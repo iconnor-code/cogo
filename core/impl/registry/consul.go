@@ -9,14 +9,14 @@ import (
 	"go.uber.org/zap"
 )
 
-func WithKitConsulClient(c *client.Consul) core.RegistryOption {
+func WithConsulClient(c *client.Consul) core.RegistryOption {
 	return func(r core.IRegistry) error {
 		r.(*Registry).consulClient = c
 		return nil
 	}
 }
 
-func (r *Registry) kitconsulRegister() error {
+func (r *Registry) consulRegister() error {
 	name, address, port, err := r.serviceConfig()
 	if err != nil {
 		return err
@@ -45,17 +45,15 @@ func (r *Registry) kitconsulRegister() error {
 		},
 	}
 	r.logger.Info("consul register", zap.String("id", serviceRegistration.ID), zap.String("name", serviceRegistration.Name), zap.String("address", serviceRegistration.Address), zap.Int("port", serviceRegistration.Port))
-	return r.consulClient.DefaultClient().Register(serviceRegistration)
+	return r.consulClient.DefaultClient().Agent().ServiceRegister(serviceRegistration)
 }
 
-func (r *Registry) kitconsulDeRegister() error {
+func (r *Registry) consulDeRegister() error {
 	instanceID, err := r.getInstanceID()
 	if err != nil {
 		return err
 	}
-	err = r.consulClient.DefaultClient().Deregister(&consul.AgentServiceRegistration{
-		ID: instanceID,
-	})
+	err = r.consulClient.DefaultClient().Agent().ServiceDeregister(instanceID)
 	if err != nil {
 		return err
 	}

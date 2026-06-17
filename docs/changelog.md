@@ -4,7 +4,7 @@
 
 ### 修复
 
-- 修复 `IDiscovery` 接口与 `KitConsulDiscovery` 实现签名不一致问题。
+- 修复 `IDiscovery` 接口与 Consul discovery 实现签名不一致问题。
 - 修复 `SrvCtx` 扩展字段 map 未初始化导致的 panic。
 - 修复 logger 全局字段未实际生效问题，并增强 `AddGlobalFields` 类型安全。
 - 修复 Etcd 注册续租逻辑中的 panic 风险与实例 ID 初始化问题。

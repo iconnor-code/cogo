@@ -39,22 +39,22 @@ func NewRegistry(conf core.IConfig, logger core.ILogger, opts ...core.RegistryOp
 
 func (r *Registry) Register(ctx context.Context) error {
 	if r.consulClient != nil {
-		return r.kitconsulRegister()
+		return r.consulRegister()
 	}
 	if r.etcdClient != nil {
 		return r.etcdRegister(ctx)
 	}
-	return cerrs.New("no registry client configured, please use WithKitConsulClient or WithEtcdClient to configure a registry client")
+	return cerrs.New("no registry client configured, please use WithConsulClient or WithEtcdClient to configure a registry client")
 }
 
 func (r *Registry) DeRegister(ctx context.Context) error {
 	if r.consulClient != nil {
-		return r.kitconsulDeRegister()
+		return r.consulDeRegister()
 	}
 	if r.etcdClient != nil {
 		return r.etcdDeRegister(ctx)
 	}
-	return cerrs.New("no registry client configured, please use WithKitConsulClient or WithEtcdClient to configure a registry client")
+	return cerrs.New("no registry client configured, please use WithConsulClient or WithEtcdClient to configure a registry client")
 }
 
 func (r *Registry) getInstanceID() (string, error) {
