@@ -1,6 +1,7 @@
 package client
 
 import (
+	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
 	"github.com/redis/go-redis/v9"
 )
@@ -12,18 +13,27 @@ type RedisClient struct {
 
 type RedisClientOption func(client *RedisClient) error
 
-func NewRedisClient(config core.IConfig) *RedisClient {
-	client := &RedisClient{
-		conf: config.Get("redis").(map[string]any),
+func NewRedisClient(config core.IConfig) (*RedisClient, error) {
+	addr, err := core.GetString(config, "redis.addr")
+	if err != nil {
+		return nil, cerrs.Wrap(err)
+	}
+	password, err := core.GetString(config, "redis.password")
+	if err != nil {
+		return nil, cerrs.Wrap(err)
+	}
+	db, err := core.GetInt(config, "redis.db")
+	if err != nil {
+		return nil, cerrs.Wrap(err)
 	}
 
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:     client.conf["addr"].(string),
-		Password: client.conf["password"].(string),
-		DB:       client.conf["db"].(int),
+		Addr:     addr,
+		Password: password,
+		DB:       db,
 	})
 
 	return &RedisClient{
 		Client: redisClient,
-	}
+	}, nil
 }

@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/iconnor-code/cogo/cerrs"
@@ -15,6 +16,18 @@ import (
 type KitEtcdRetistry struct {
 	config      core.IConfig
 	registryKey string
+}
+
+func (r *Registry) etcdRegistryKey() (string, error) {
+	name, err := core.GetString(r.config, "registry.name")
+	if err != nil {
+		return "", cerrs.Wrap(err)
+	}
+	instanceID, err := r.getInstanceID()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("/services/%s/%s", name, instanceID), nil
 }
 
 func WithEtcdClient(etcd *client.EtcdClient) core.RegistryOption {
@@ -37,15 +50,22 @@ func (r *Registry) etcdRegister(ctx context.Context) error {
 		return cerrs.Wrap(err)
 	}
 	r.leaseID = lease.ID
-	instanceID := r.getInstanceID()
+	instanceID, err := r.getInstanceID()
+	if err != nil {
+		return err
+	}
+	key, err := r.etcdRegistryKey()
+	if err != nil {
+		return err
+	}
 
-	_, err = r.etcdClient.Put(ctx, r.config.Get("registry.name").(string), instanceID, clientv3.WithLease(lease.ID))
+	_, err = r.etcdClient.Put(ctx, key, instanceID, clientv3.WithLease(lease.ID))
 	if err != nil {
 		return cerrs.Wrap(err)
 	}
 	r.keepAlive(ctx)
 
-	r.logger.Info("etcd register", zap.String("key", r.config.Get("registry.name").(string)), zap.String("value", instanceID), zap.Int64("lease_id", int64(r.leaseID)), zap.Int64("lease_ttl", r.leaseTTL))
+	r.logger.Info("etcd register", zap.String("key", key), zap.String("value", instanceID), zap.Int64("lease_id", int64(r.leaseID)), zap.Int64("lease_ttl", r.leaseTTL))
 
 	return nil
 }
@@ -85,7 +105,11 @@ func (r *Registry) etcdDeRegister(ctx context.Context) error {
 	if r.leaseCancel != nil {
 		r.leaseCancel()
 	}
-	_, err := r.etcdClient.Delete(ctx, r.config.Get("registry.name").(string))
+	key, err := r.etcdRegistryKey()
+	if err != nil {
+		return err
+	}
+	_, err = r.etcdClient.Delete(ctx, key)
 	if err != nil {
 		return err
 	}

@@ -26,8 +26,13 @@ func NewMysqlDB(config core.IConfig, logger core.ILogger) (*MysqlDB, error) {
 
 	gormLogger := NewGormZapLogger(mysqlDB.logger)
 
+	dsn, err := core.GetString(mysqlDB.conf, "mysql.dsn")
+	if err != nil {
+		return nil, cerrs.Wrap(err)
+	}
+
 	db, err := gorm.Open(mysql.New(mysql.Config{
-		DSN:                       mysqlDB.conf.Get("mysql.dsn").(string),
+		DSN:                       dsn,
 		DefaultStringSize:         256,   // string 类型字段的默认长度
 		DisableDatetimePrecision:  true,  // 禁用 datetime 精度，MySQL 5.6 之前的数据库不支持
 		DontSupportRenameIndex:    true,  // 重命名索引时采用删除并新建的方式，MySQL 5.7 之前的数据库和 MariaDB 不支持重命名索引
@@ -45,9 +50,21 @@ func NewMysqlDB(config core.IConfig, logger core.ILogger) (*MysqlDB, error) {
 		return nil, cerrs.Wrap(err)
 	}
 
-	sqlDB.SetMaxOpenConns(mysqlDB.conf.Get("mysql.pool.max_open_conns").(int))
-	sqlDB.SetMaxIdleConns(mysqlDB.conf.Get("mysql.pool.max_idle_conns").(int))
-	sqlDB.SetConnMaxLifetime(time.Duration(mysqlDB.conf.Get("mysql.pool.max_lifetime").(int)) * time.Second)
+	maxOpenConns, err := core.GetInt(mysqlDB.conf, "mysql.pool.max_open_conns")
+	if err != nil {
+		return nil, cerrs.Wrap(err)
+	}
+	maxIdleConns, err := core.GetInt(mysqlDB.conf, "mysql.pool.max_idle_conns")
+	if err != nil {
+		return nil, cerrs.Wrap(err)
+	}
+	maxLifetime, err := core.GetInt(mysqlDB.conf, "mysql.pool.max_lifetime")
+	if err != nil {
+		return nil, cerrs.Wrap(err)
+	}
+	sqlDB.SetMaxOpenConns(maxOpenConns)
+	sqlDB.SetMaxIdleConns(maxIdleConns)
+	sqlDB.SetConnMaxLifetime(time.Duration(maxLifetime) * time.Second)
 
 	mysqlDB.DB = db
 	return mysqlDB, nil

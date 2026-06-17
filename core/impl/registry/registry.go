@@ -57,14 +57,42 @@ func (r *Registry) DeRegister(ctx context.Context) error {
 	return cerrs.New("no registry client configured, please use WithKitConsulClient or WithEtcdClient to configure a registry client")
 }
 
-func (r *Registry) getInstanceID() string {
+func (r *Registry) getInstanceID() (string, error) {
 	if r.instanceID != "" {
-		return r.instanceID
+		return r.instanceID, nil
+	}
+	name, err := core.GetString(r.config, "registry.name")
+	if err != nil {
+		return "", cerrs.Wrap(err)
+	}
+	address, err := core.GetString(r.config, "registry.address")
+	if err != nil {
+		return "", cerrs.Wrap(err)
+	}
+	port, err := core.GetInt(r.config, "registry.port")
+	if err != nil {
+		return "", cerrs.Wrap(err)
 	}
 	r.instanceID = fmt.Sprintf("%s-%s:%d",
-		r.config.Get("registry.name").(string),
-		r.config.Get("registry.address").(string),
-		r.config.Get("registry.port").(int),
+		name,
+		address,
+		port,
 	)
-	return r.instanceID
+	return r.instanceID, nil
+}
+
+func (r *Registry) serviceConfig() (name string, address string, port int, err error) {
+	name, err = core.GetString(r.config, "registry.name")
+	if err != nil {
+		return "", "", 0, cerrs.Wrap(err)
+	}
+	address, err = core.GetString(r.config, "registry.address")
+	if err != nil {
+		return "", "", 0, cerrs.Wrap(err)
+	}
+	port, err = core.GetInt(r.config, "registry.port")
+	if err != nil {
+		return "", "", 0, cerrs.Wrap(err)
+	}
+	return name, address, port, nil
 }

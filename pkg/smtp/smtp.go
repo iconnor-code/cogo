@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
 
 	"go.uber.org/zap"
@@ -23,14 +24,30 @@ type EmailSMTP struct {
 	logger   core.ILogger
 }
 
-func NewSMTP(conf core.IConfig, logger core.ILogger) *EmailSMTP {
-	return &EmailSMTP{
-		host:     conf.Get("smtp.host").(string),
-		port:     conf.Get("smtp.port").(int),
-		username: conf.Get("smtp.username").(string),
-		password: conf.Get("smtp.password").(string),
-		logger:   logger,
+func NewSMTP(conf core.IConfig, logger core.ILogger) (*EmailSMTP, error) {
+	host, err := core.GetString(conf, "smtp.host")
+	if err != nil {
+		return nil, cerrs.Wrap(err)
 	}
+	port, err := core.GetInt(conf, "smtp.port")
+	if err != nil {
+		return nil, cerrs.Wrap(err)
+	}
+	username, err := core.GetString(conf, "smtp.username")
+	if err != nil {
+		return nil, cerrs.Wrap(err)
+	}
+	password, err := core.GetString(conf, "smtp.password")
+	if err != nil {
+		return nil, cerrs.Wrap(err)
+	}
+	return &EmailSMTP{
+		host:     host,
+		port:     port,
+		username: username,
+		password: password,
+		logger:   logger,
+	}, nil
 }
 
 func (e *EmailSMTP) SendVerifyCode(ctx context.Context, from string, to string, code string, period time.Duration) error {

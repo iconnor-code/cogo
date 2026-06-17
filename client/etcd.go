@@ -12,8 +12,12 @@ type EtcdClient struct {
 }
 
 func NewEtcdClient(config core.IConfig) (*EtcdClient, error) {
+	endpoints, err := core.GetStringSlice(config, "etcd.endpoints")
+	if err != nil {
+		return nil, cerrs.Wrap(err)
+	}
 	client, err := clientv3.New(clientv3.Config{
-		Endpoints: config.Get("etcd.endpoints").([]string),
+		Endpoints: endpoints,
 	})
 	if err != nil {
 		return nil, cerrs.Wrap(err)

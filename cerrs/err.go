@@ -38,6 +38,7 @@ func (e *CError) Unwrap() error {
 
 func New(msg string) error {
 	return &CError{
+		code:  UnknownErrCode,
 		track: caller(),
 		msg:   msg,
 		cause: nil,
@@ -55,6 +56,7 @@ func NewWithCode(code CerrCode, msg string) error {
 
 func Wrap(err error, msg ...string) error {
 	cerr := &CError{
+		code:  UnknownErrCode,
 		track: caller(),
 		cause: err,
 	}

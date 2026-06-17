@@ -36,7 +36,11 @@ func NewGrpcServer(config core.IConfig, logger core.ILogger, bs *grpc.Server, op
 	for _, opt := range opts {
 		opt(s)
 	}
-	listener, err := net.Listen("tcp", s.conf.Get("grpc.listen").(string))
+	listen, err := core.GetString(s.conf, "grpc.listen")
+	if err != nil {
+		return nil, cerrs.Wrap(err)
+	}
+	listener, err := net.Listen("tcp", listen)
 	if err != nil {
 		return nil, cerrs.Wrap(err)
 	}
@@ -46,7 +50,8 @@ func NewGrpcServer(config core.IConfig, logger core.ILogger, bs *grpc.Server, op
 
 func (s *GrpcServer) Start() error {
 	go func() {
-		s.logger.Info("grpc server start", zap.String("listen", s.conf.Get("grpc.listen").(string)))
+		listen, _ := core.GetString(s.conf, "grpc.listen")
+		s.logger.Info("grpc server start", zap.String("listen", listen))
 		err := s.baseServer.Serve(s.listener)
 		if err != nil {
 			s.logger.Error("grpc server failed", zap.Error(err))

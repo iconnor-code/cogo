@@ -9,11 +9,16 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func RequestLogInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		srvCtx := ctx.Value(core.SrvCtx).(core.ISrvCtx)
+		srvCtx, ok := core.SrvCtxFromContext(ctx)
+		if !ok {
+			return nil, status.Errorf(codes.Internal, "srvctx is required")
+		}
 		logger := srvCtx.Logger()
 		start := time.Now()
 		defer func() {

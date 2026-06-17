@@ -16,7 +16,10 @@ const CallerMethodsKey = "caller_methods"
 
 func CycleCheckInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		srvCtx := ctx.Value(core.SrvCtx).(core.ISrvCtx)
+		srvCtx, ok := core.SrvCtxFromContext(ctx)
+		if !ok {
+			return nil, status.Errorf(codes.Internal, "srvctx is required")
+		}
 		logger := srvCtx.Logger()
 
 		md, ok := metadata.FromIncomingContext(ctx)

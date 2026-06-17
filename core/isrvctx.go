@@ -1,8 +1,18 @@
 package core
 
+import "context"
+
 type SrvCtxKey string
 
 const SrvCtx SrvCtxKey = "srvctx"
+
+func SrvCtxFromContext(ctx context.Context) (ISrvCtx, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	srvCtx, ok := ctx.Value(SrvCtx).(ISrvCtx)
+	return srvCtx, ok
+}
 
 type IBizInfo interface {
 	GetBizID() int32

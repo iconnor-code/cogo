@@ -7,6 +7,8 @@ import (
 	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type testLogger struct{}
@@ -60,5 +62,24 @@ func TestRecoveryInterceptorRecoverPanic(t *testing.T) {
 	}
 	if cerr.GetCode() != cerrs.UnknownErrCode {
 		t.Fatalf("expected unknown err code")
+	}
+}
+
+func TestRecoveryInterceptorMissingSrvCtx(t *testing.T) {
+	itc := RecoveryInterceptor()
+	info := &grpc.UnaryServerInfo{FullMethod: "/svc/method"}
+	_, err := itc(context.Background(), "req", info, func(context.Context, any) (any, error) {
+		t.Fatalf("handler should not be called")
+		return nil, nil
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected grpc status error")
+	}
+	if st.Code() != codes.Internal {
+		t.Fatalf("expected Internal, got %v", st.Code())
 	}
 }

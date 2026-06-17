@@ -15,7 +15,7 @@ import (
 )
 
 type HTTPServer struct {
-	conf   map[string]any
+	config core.IConfig
 	logger core.ILogger
 	// wg      *sync.WaitGroup
 	handler *runtime.ServeMux
@@ -23,12 +23,8 @@ type HTTPServer struct {
 }
 
 func NewHTTPServer(config core.IConfig, logger core.ILogger, handler *runtime.ServeMux) (*HTTPServer, error) {
-	conf := config.Get("http").(map[string]any)
-	if conf == nil {
-		return nil, cerrs.New("http config is not found")
-	}
 	s := &HTTPServer{
-		conf:    conf,
+		config:  config,
 		logger:  logger,
 		handler: handler,
 	}
@@ -37,16 +33,20 @@ func NewHTTPServer(config core.IConfig, logger core.ILogger, handler *runtime.Se
 
 func (s *HTTPServer) Start() error {
 	startHTTPServer := func() (*http.Server, error) {
+		listen, err := core.GetString(s.config, "http.listen")
+		if err != nil {
+			return nil, cerrs.Wrap(err)
+		}
 		httpSrv := &http.Server{
 			Handler: s.handler,
-			Addr:    s.conf["listen"].(string),
+			Addr:    listen,
 		}
 		listener, err := net.Listen("tcp", httpSrv.Addr)
 		if err != nil {
 			return nil, cerrs.Wrap(err)
 		}
 		go func() {
-			s.logger.Info("http server start", zap.String("listen", s.conf["listen"].(string)))
+			s.logger.Info("http server start", zap.String("listen", listen))
 			err := httpSrv.Serve(listener)
 			if err != nil && err != http.ErrServerClosed {
 				s.logger.Error("http server start failed", zap.Error(err))
@@ -56,16 +56,20 @@ func (s *HTTPServer) Start() error {
 	}
 
 	startHTTPSServer := func(sslConfMap map[string]string) (*http.Server, error) {
+		listen, err := core.GetString(s.config, "http.listen")
+		if err != nil {
+			return nil, cerrs.Wrap(err)
+		}
 		httpsSrv := &http.Server{
 			Handler: s.handler,
-			Addr:    s.conf["listen"].(string),
+			Addr:    listen,
 		}
 		listener, err := net.Listen("tcp", httpsSrv.Addr)
 		if err != nil {
 			return nil, cerrs.Wrap(err)
 		}
 		go func() {
-			s.logger.Info("https server start", zap.String("listen", s.conf["listen"].(string)))
+			s.logger.Info("https server start", zap.String("listen", listen))
 			err := httpsSrv.ServeTLS(listener, sslConfMap["cert_file"], sslConfMap["key_file"])
 			if err != nil && err != http.ErrServerClosed {
 				s.logger.Error("https server start failed", zap.Error(err))
@@ -75,13 +79,24 @@ func (s *HTTPServer) Start() error {
 	}
 
 	var err error
-	sslConf, ok := s.conf["ssl"]
-	if ok && sslConf != nil {
-		sslConfMap, ok := sslConf.(map[string]string)
+	sslConf := s.config.Get("http.ssl")
+	if sslConf != nil {
+		sslConfMap, ok := sslConf.(map[string]any)
 		if !ok {
 			return cerrs.New(fmt.Sprintf("https ssl config is error: %+v", sslConf))
 		}
-		s.server, err = startHTTPSServer(sslConfMap)
+		certFile, ok := sslConfMap["cert_file"].(string)
+		if !ok || certFile == "" {
+			return cerrs.New("https ssl cert_file is required")
+		}
+		keyFile, ok := sslConfMap["key_file"].(string)
+		if !ok || keyFile == "" {
+			return cerrs.New("https ssl key_file is required")
+		}
+		s.server, err = startHTTPSServer(map[string]string{
+			"cert_file": certFile,
+			"key_file":  keyFile,
+		})
 		if err != nil {
 			return err
 		}

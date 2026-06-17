@@ -17,14 +17,30 @@ func WithKitConsulClient(c *client.Consul) core.RegistryOption {
 }
 
 func (r *Registry) kitconsulRegister() error {
+	name, address, port, err := r.serviceConfig()
+	if err != nil {
+		return err
+	}
+	interval, err := core.GetString(r.config, "registry.health_check.interval")
+	if err != nil {
+		return err
+	}
+	timeout, err := core.GetString(r.config, "registry.health_check.timeout")
+	if err != nil {
+		return err
+	}
+	instanceID, err := r.getInstanceID()
+	if err != nil {
+		return err
+	}
 	serviceRegistration := &consul.AgentServiceRegistration{
-		ID:      r.getInstanceID(),
-		Name:    r.config.Get("registry.name").(string),
-		Address: r.config.Get("registry.address").(string), Port: r.config.Get("registry.port").(int),
+		ID:      instanceID,
+		Name:    name,
+		Address: address, Port: port,
 		Check: &consul.AgentServiceCheck{
-			GRPC:     fmt.Sprintf("%s:%d", r.config.Get("registry.address").(string), r.config.Get("registry.port").(int)),
-			Interval: r.config.Get("registry.health_check.interval").(string),
-			Timeout:  r.config.Get("registry.health_check.timeout").(string),
+			GRPC:     fmt.Sprintf("%s:%d", address, port),
+			Interval: interval,
+			Timeout:  timeout,
 			Status:   consul.HealthPassing,
 		},
 	}
@@ -33,12 +49,16 @@ func (r *Registry) kitconsulRegister() error {
 }
 
 func (r *Registry) kitconsulDeRegister() error {
-	err := r.consulClient.DefaultClient().Deregister(&consul.AgentServiceRegistration{
-		ID: r.getInstanceID(),
+	instanceID, err := r.getInstanceID()
+	if err != nil {
+		return err
+	}
+	err = r.consulClient.DefaultClient().Deregister(&consul.AgentServiceRegistration{
+		ID: instanceID,
 	})
 	if err != nil {
 		return err
 	}
-	r.logger.Info("consul deregister", zap.String("id", r.getInstanceID()))
+	r.logger.Info("consul deregister", zap.String("id", instanceID))
 	return nil
 }

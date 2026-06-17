@@ -17,7 +17,10 @@ import (
 
 func UserInfoInterceptor(whiteList ...string) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		srvCtx := ctx.Value(core.SrvCtx).(core.ISrvCtx)
+		srvCtx, ok := core.SrvCtxFromContext(ctx)
+		if !ok {
+			return nil, status.Errorf(codes.Internal, "srvctx is required")
+		}
 
 		// skip white list
 		if slices.Contains(whiteList, info.FullMethod) {

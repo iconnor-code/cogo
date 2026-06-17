@@ -13,26 +13,26 @@ import (
 )
 
 type MetricsServer struct {
-	conf   map[string]any
+	config core.IConfig
 	logger core.ILogger
 	server *http.Server
 }
 
 func NewMetricsServer(config core.IConfig, logger core.ILogger) (*MetricsServer, error) {
-	conf, ok := config.Get("metrics").(map[string]any)
-	if !ok {
-		return nil, cerrs.New("metrics config error")
-	}
 	s := &MetricsServer{
-		conf:   conf,
+		config: config,
 		logger: logger,
 	}
 	return s, nil
 }
 
 func (s *MetricsServer) Start() error {
+	listen, err := core.GetString(s.config, "metrics.listen")
+	if err != nil {
+		return cerrs.Wrap(err)
+	}
 	httpSrv := &http.Server{
-		Addr:    s.conf["listen"].(string),
+		Addr:    listen,
 		Handler: promhttp.Handler(),
 	}
 	listener, err := net.Listen("tcp", httpSrv.Addr)
@@ -40,7 +40,7 @@ func (s *MetricsServer) Start() error {
 		return cerrs.Wrap(err)
 	}
 	go func() {
-		s.logger.Info("metrics server start", zap.String("listen", s.conf["listen"].(string)))
+		s.logger.Info("metrics server start", zap.String("listen", listen))
 		if listenErr := httpSrv.Serve(listener); listenErr != nil && listenErr != http.ErrServerClosed {
 			s.logger.Error("metrics server start failed", zap.Error(listenErr))
 		}

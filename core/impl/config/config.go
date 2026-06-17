@@ -4,22 +4,17 @@ package config
 import (
 	"fmt"
 	"path"
-	"sync"
+	"strings"
 
 	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
 	"github.com/spf13/viper"
 )
 
-var (
-	configOnce     sync.Once
-	configInstance *Config
-)
-
 type Config struct {
-	rwmutex  sync.RWMutex
 	value    map[string]any
 	filepath string
+	viper    *viper.Viper
 }
 
 func WithFilePath(filepath string) core.ConfigOption {
@@ -30,30 +25,25 @@ func WithFilePath(filepath string) core.ConfigOption {
 }
 
 func NewConfig(opts ...core.ConfigOption) (*Config, error) {
-	var err error
-	configOnce.Do(func() {
-		configInstance = &Config{}
-		for _, opt := range opts {
-			err = opt(configInstance)
-			if err != nil {
-				err = cerrs.Wrap(err, "applying config option error")
-			}
+	config := &Config{
+		viper: viper.New(),
+	}
+	for _, opt := range opts {
+		if err := opt(config); err != nil {
+			return nil, cerrs.Wrap(err, "applying config option error")
 		}
-		err = configInstance.ReLoad()
-	})
-	return configInstance, err
+	}
+	if err := config.ReLoad(); err != nil {
+		return nil, err
+	}
+	return config, nil
 }
 
 func (ct *Config) Get(key string) any {
-	ct.rwmutex.RLock()
-	defer ct.rwmutex.RUnlock()
-
-	return viper.Get(key)
+	return ct.viper.Get(key)
 }
 
 func (ct *Config) ReLoad() error {
-	ct.rwmutex.Lock()
-	defer ct.rwmutex.Unlock()
 	if ct.filepath != "" {
 		return ct.loadFromFile()
 	}
@@ -65,16 +55,20 @@ func (ct *Config) loadFromFile() error {
 	fileNameWithoutExt := path.Base(ct.filepath)
 	ext := path.Ext(ct.filepath)
 	fileNameWithoutExt = fileNameWithoutExt[:len(fileNameWithoutExt)-len(ext)]
+	configType := strings.TrimPrefix(ext, ".")
+	if configType == "" {
+		configType = "yaml"
+	}
 
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(dir)
-	viper.SetConfigName(fileNameWithoutExt)
+	ct.viper.SetConfigType(configType)
+	ct.viper.AddConfigPath(dir)
+	ct.viper.SetConfigName(fileNameWithoutExt)
 
-	if err := viper.ReadInConfig(); err != nil {
+	if err := ct.viper.ReadInConfig(); err != nil {
 		return cerrs.Wrap(err, fmt.Sprintf("reading config file error,filepath:%s", ct.filepath))
 	}
 
-	err := viper.Unmarshal(&ct.value)
+	err := ct.viper.Unmarshal(&ct.value)
 	if err != nil {
 		return cerrs.Wrap(err)
 	}
