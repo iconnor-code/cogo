@@ -43,6 +43,22 @@ etcd:
   endpoints:
     - "127.0.0.1:2379"
 
+nacos:
+  servers:
+    - "127.0.0.1:8848"
+  # 或使用单节点写法：
+  # address: "127.0.0.1:8848"
+  namespace_id: ""
+  group_name: "DEFAULT_GROUP"
+  cluster_name: ""
+  username: ""
+  password: ""
+  timeout_ms: 5000
+  not_load_cache_at_start: true
+  log_dir: "/tmp/nacos/log"
+  cache_dir: "/tmp/nacos/cache"
+  log_level: "info"
+
 mysql:
   dsn: "user:pass@tcp(127.0.0.1:3306)/db?charset=utf8mb4&parseTime=True&loc=Local"
   pool:
@@ -77,10 +93,35 @@ smtp:
 - `registry.*`：服务注册信息。
 - `consul.address`：Consul 地址。
 - `etcd.endpoints`：Etcd endpoint 列表。
+- `nacos.servers` / `nacos.address`：Nacos server 地址，`servers` 支持多节点，地址格式为 `host:port`。
+- `nacos.namespace_id`：Nacos namespace ID。
+- `nacos.group_name`：Nacos 注册发现和配置中心默认 group，未配置时为 `DEFAULT_GROUP`。
+- `nacos.cluster_name`：Nacos 注册实例 cluster，未配置时为空。
+- `nacos.username` / `nacos.password`：Nacos 鉴权信息，可选。
+- `nacos.timeout_ms`：Nacos SDK 请求超时时间，默认 `5000`。
+- `nacos.log_dir` / `nacos.cache_dir` / `nacos.log_level`：Nacos SDK 日志与缓存配置。
 - `mysql.*`：MySQL 连接与连接池。
 - `redis.*`：Redis 连接参数。
 - `jwt.*`：JWT 签名密钥与过期策略。
 - `smtp.*`：SMTP 发信参数。
+
+## Nacos 配置中心
+
+Nacos 配置中心通过 `core/impl/config` 的 option 接入：
+
+```go
+nacosClient, err := client.NewNacos(bootstrapConfig)
+if err != nil {
+	return err
+}
+
+conf, err := config.NewConfig(
+	config.WithNacosClient(nacosClient),
+	config.WithNacosConfig("account.yaml", "DEFAULT_GROUP", "yaml"),
+)
+```
+
+`WithNacosConfig` 的第三个参数为空时，会根据 data ID 后缀推断配置类型；无后缀时默认 `yaml`。
 
 ## 注意事项
 

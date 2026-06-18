@@ -18,11 +18,15 @@ type HTTPServer struct {
 	config core.IConfig
 	logger core.ILogger
 	// wg      *sync.WaitGroup
-	handler *runtime.ServeMux
+	handler http.Handler
 	server  *http.Server
 }
 
 func NewHTTPServer(config core.IConfig, logger core.ILogger, handler *runtime.ServeMux) (*HTTPServer, error) {
+	return NewHTTPServerWithHandler(config, logger, handler)
+}
+
+func NewHTTPServerWithHandler(config core.IConfig, logger core.ILogger, handler http.Handler) (*HTTPServer, error) {
 	s := &HTTPServer{
 		config:  config,
 		logger:  logger,

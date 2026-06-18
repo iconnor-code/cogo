@@ -15,6 +15,7 @@ type Registry struct {
 	instanceID   string
 	config       core.IConfig
 	consulClient *client.Consul
+	nacosClient  *client.Nacos
 	logger       core.ILogger
 
 	etcdClient  *client.EtcdClient
@@ -41,20 +42,26 @@ func (r *Registry) Register(ctx context.Context) error {
 	if r.consulClient != nil {
 		return r.consulRegister()
 	}
+	if r.nacosClient != nil {
+		return r.nacosRegister(ctx)
+	}
 	if r.etcdClient != nil {
 		return r.etcdRegister(ctx)
 	}
-	return cerrs.New("no registry client configured, please use WithConsulClient or WithEtcdClient to configure a registry client")
+	return cerrs.New("no registry client configured, please use WithConsulClient, WithNacosClient or WithEtcdClient to configure a registry client")
 }
 
 func (r *Registry) DeRegister(ctx context.Context) error {
 	if r.consulClient != nil {
 		return r.consulDeRegister()
 	}
+	if r.nacosClient != nil {
+		return r.nacosDeRegister(ctx)
+	}
 	if r.etcdClient != nil {
 		return r.etcdDeRegister(ctx)
 	}
-	return cerrs.New("no registry client configured, please use WithConsulClient or WithEtcdClient to configure a registry client")
+	return cerrs.New("no registry client configured, please use WithConsulClient, WithNacosClient or WithEtcdClient to configure a registry client")
 }
 
 func (r *Registry) getInstanceID() (string, error) {

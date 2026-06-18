@@ -6,9 +6,9 @@
 
 - 核心接口抽象：`IConfig`、`ILogger`、`IServer`、`IRegistry`、`IDiscovery`、`ISrvCtx`
 - 服务启动能力：gRPC、HTTP(gRPC-Gateway)、Prometheus Metrics
-- 服务治理：Consul / Etcd 注册，Consul 发现 + 负载均衡 + 重试
+- 服务治理：Consul / Nacos / Etcd 注册，Consul / Nacos 发现 + 负载均衡 + 重试
 - 中间件：请求日志、恢复、上下文注入、用户信息解析、业务信息透传、循环调用检测
-- 客户端封装：MySQL(Gorm)、Redis、Consul、Etcd
+- 客户端封装：MySQL(Gorm)、Redis、Consul、Nacos、Etcd
 - 工具包：JWT、Captcha、SMTP
 
 ## 目录结构
