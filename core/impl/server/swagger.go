@@ -1,10 +1,10 @@
 package server
 
 import (
-	"fmt"
 	"io/fs"
 	"net/http"
-	"strings"
+
+	"github.com/swaggest/swgui/v5emb"
 )
 
 type SwaggerOption struct {
@@ -29,14 +29,7 @@ func NewSwaggerHandler(apiHandler http.Handler, opt SwaggerOption) http.Handler 
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_, _ = w.Write(data)
 	})
-	mux.HandleFunc("/swagger/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/swagger/" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, swaggerHTML, htmlTitle(opt.Title), specPath)
-	})
+	mux.Handle("/swagger/", v5emb.New(titleOrDefault(opt.Title), specPath, "/swagger/"))
 
 	if apiHandler == nil {
 		return mux
@@ -45,44 +38,9 @@ func NewSwaggerHandler(apiHandler http.Handler, opt SwaggerOption) http.Handler 
 	return mux
 }
 
-func htmlTitle(title string) string {
-	if strings.TrimSpace(title) == "" {
+func titleOrDefault(title string) string {
+	if title == "" {
 		return "Swagger UI"
 	}
-	replacer := strings.NewReplacer(
-		"&", "&amp;",
-		"<", "&lt;",
-		">", "&gt;",
-		`"`, "&quot;",
-		"'", "&#39;",
-	)
-	return replacer.Replace(title)
+	return title
 }
-
-const swaggerHTML = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>%s</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
-  <style>
-    body { margin: 0; background: #fafafa; }
-  </style>
-</head>
-<body>
-  <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-  <script>
-    window.onload = function() {
-      window.ui = SwaggerUIBundle({
-        url: "%s",
-        dom_id: "#swagger-ui",
-        deepLinking: true,
-        presets: [SwaggerUIBundle.presets.apis],
-        layout: "BaseLayout"
-      });
-    };
-  </script>
-</body>
-</html>`

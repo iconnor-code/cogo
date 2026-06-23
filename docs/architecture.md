@@ -15,14 +15,14 @@
 
 ## 实现分层
 
-- `core/impl/config`：Viper 本地文件 / Nacos 配置中心加载
+- `core/impl/config`：Viper 本地文件加载
 - `core/impl/logger`：Zap + Lumberjack
 - `core/impl/server`：
   - `grpc.go`：gRPC 服务启动与关闭
   - `http.go`：HTTP/gRPC-Gateway 服务启动与关闭（支持 TLS）
   - `metrics.go`：Prometheus 指标暴露
-- `core/impl/registry`：Consul / Nacos / Etcd 注册实现
-- `core/impl/discovery`：基于 Consul / Nacos 的发现与负载均衡
+- `core/impl/registry`：Consul / Etcd 注册实现
+- `core/impl/discovery`：基于 Consul 的发现与负载均衡
 - `core/impl/srvctx`：请求上下文实现
 
 ## 典型请求流程
