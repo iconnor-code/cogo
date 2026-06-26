@@ -77,6 +77,7 @@ func TestUserInfoInterceptorSuccess(t *testing.T) {
 	token := makeAccessToken("secret", jwt.MapClaims{
 		"user_id":    float64(123),
 		"user_email": "u@test.com",
+		"is_admin":   true,
 	})
 
 	md := metadata.Pairs("access_token", token)
@@ -95,6 +96,9 @@ func TestUserInfoInterceptorSuccess(t *testing.T) {
 		}
 		if user.GetUserName() != "u@test.com" {
 			return nil, errors.New("unexpected user email")
+		}
+		if !user.GetIsAdmin() {
+			return nil, errors.New("unexpected admin flag")
 		}
 		return "ok", nil
 	})

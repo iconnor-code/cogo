@@ -37,7 +37,7 @@ func TestSrvCtxSetGetField(t *testing.T) {
 func TestSrvCtxBizAndUserInfo(t *testing.T) {
 	s := NewSrvCtx(&testLogger{}, &testConfig{})
 	b := &BizInfo{BizID: 1, BizName: "biz"}
-	u := &UserInfo{UserID: 2, UserEmail: "u@test"}
+	u := &UserInfo{UserID: 2, UserEmail: "u@test", IsAdmin: true}
 
 	s.SetBizInfo(b)
 	s.SetUserInfo(u)
@@ -47,5 +47,8 @@ func TestSrvCtxBizAndUserInfo(t *testing.T) {
 	}
 	if s.GetUserInfo().GetUserID() != 2 {
 		t.Fatalf("unexpected user id")
+	}
+	if !s.GetUserInfo().GetIsAdmin() {
+		t.Fatalf("unexpected admin flag")
 	}
 }

@@ -21,13 +21,13 @@
 
 - `UserInfoInterceptor(whiteList...)`
   - 从 `metadata[access_token]` 读取 JWT。
-  - 解析后将 `user_id` / `user_email` 写入 `ISrvCtx`。
+  - 解析后将 `user_id` / `user_email` / `is_admin` 写入 `ISrvCtx`。
   - `whiteList` 中的方法跳过鉴权。
 
 - `RequestLogInterceptor()`
   - 记录请求耗时。
   - 对健康检查方法 `grpc.health.v1.Health/Check` 做了日志过滤。
-  - 对内部错误进行统一包装返回。
+  - 对标准 gRPC status 错误保持透传，对内部错误进行统一包装返回。
 
 ## 建议顺序
 
@@ -48,7 +48,7 @@
 
 ## Metadata 约定
 
-- `access_token`：用户访问 token（`UserInfoInterceptor` 使用）
+- `access_token`：用户访问 token（`UserInfoInterceptor` 使用，包含 `user_id` / `user_email` / `is_admin`）
 - `biz_id`：上游业务 ID，可多值
 - `biz_name`：上游业务名，可多值
 - `caller_methods`：调用方法链（循环调用检查）

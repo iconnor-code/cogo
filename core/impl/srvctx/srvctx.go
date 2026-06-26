@@ -33,6 +33,7 @@ func (b *BizInfo) GetBizName() string {
 type UserInfo struct {
 	UserID    uint32 `json:"user_id"`
 	UserEmail string `json:"user_email"`
+	IsAdmin   bool   `json:"is_admin"`
 }
 
 func (u *UserInfo) GetUserID() uint32 {
@@ -40,6 +41,9 @@ func (u *UserInfo) GetUserID() uint32 {
 }
 func (u *UserInfo) GetUserName() string {
 	return u.UserEmail
+}
+func (u *UserInfo) GetIsAdmin() bool {
+	return u.IsAdmin
 }
 
 type SrvCtx struct {

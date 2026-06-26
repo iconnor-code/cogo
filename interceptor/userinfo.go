@@ -51,10 +51,12 @@ func UserInfoInterceptor(whiteList ...string) grpc.UnaryServerInterceptor {
 		if !ok || userEmail == "" {
 			return nil, status.Errorf(codes.InvalidArgument, "access_token user_email is invalid")
 		}
+		isAdmin, _ := userInfo["is_admin"].(bool)
 
 		srvCtx.SetUserInfo(&srvctx.UserInfo{
 			UserID:    userID,
 			UserEmail: userEmail,
+			IsAdmin:   isAdmin,
 		})
 
 		return handler(ctx, req)

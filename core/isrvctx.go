@@ -24,6 +24,7 @@ type IBizInfo interface {
 type IUserInfo interface {
 	GetUserID() uint32
 	GetUserName() string
+	GetIsAdmin() bool
 }
 
 type ISrvCtx interface {

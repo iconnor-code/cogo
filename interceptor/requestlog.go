@@ -45,6 +45,16 @@ func RequestLogInterceptor() grpc.UnaryServerInterceptor {
 			return resp, nil
 		}
 
+		if st, ok := status.FromError(err); ok {
+			logger.Warn("request failed",
+				zap.String("code", st.Code().String()),
+				zap.String("message", st.Message()),
+				zap.String("method", info.FullMethod),
+				zap.Any("request", req),
+			)
+			return nil, err
+		}
+
 		if customErr, ok := err.(*cerrs.CError); ok {
 			if customErr.GetCode() == cerrs.UnknownErrCode {
 				logger.Error("internal custom error",
