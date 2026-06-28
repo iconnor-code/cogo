@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -31,6 +32,25 @@ func (l *testLogger) AddGlobalFields(...any) {}
 type testRegistry struct {
 	registered   bool
 	deregistered bool
+}
+
+type testServer struct {
+	started bool
+	stopped bool
+	err     error
+}
+
+func (s *testServer) Start() error {
+	if s.err != nil {
+		return s.err
+	}
+	s.started = true
+	return nil
+}
+
+func (s *testServer) Stop() error {
+	s.stopped = true
+	return nil
 }
 
 func (r *testRegistry) Register(context.Context) error {
@@ -104,6 +124,54 @@ func TestGrpcServerStartStopRegistersAndDeregisters(t *testing.T) {
 	}
 	if !registry.deregistered {
 		t.Fatalf("expected registry.DeRegister to be called")
+	}
+}
+
+func TestGRPCEndpointPrefersGatewayEndpoint(t *testing.T) {
+	endpoint, err := GRPCEndpoint(&testConfig{data: map[string]any{
+		"grpc": map[string]any{
+			"gateway_endpoint": "gateway:9090",
+			"listen":           ":9090",
+		},
+	}})
+	if err != nil {
+		t.Fatalf("grpc endpoint: %v", err)
+	}
+	if endpoint != "gateway:9090" {
+		t.Fatalf("expected gateway endpoint, got %q", endpoint)
+	}
+}
+
+func TestGRPCEndpointFallsBackToListen(t *testing.T) {
+	endpoint, err := GRPCEndpoint(&testConfig{data: map[string]any{
+		"grpc": map[string]any{"listen": ":9090"},
+	}})
+	if err != nil {
+		t.Fatalf("grpc endpoint: %v", err)
+	}
+	if endpoint != "127.0.0.1:9090" {
+		t.Fatalf("expected listen endpoint, got %q", endpoint)
+	}
+}
+
+func TestServerGroupStopsStartedServersOnStartError(t *testing.T) {
+	first := &testServer{}
+	second := &testServer{err: errors.New("boom")}
+	group := NewServerGroup()
+	group.AddServer("first", first)
+	group.AddServer("second", second)
+
+	if err := group.Start(); err == nil {
+		t.Fatalf("expected start error")
+	}
+	if !first.started {
+		t.Fatalf("expected first server to start")
+	}
+	if !first.stopped {
+		t.Fatalf("expected first server to stop after later start error")
+	}
+	if second.started {
+		t.Fatalf("second server should not be marked started")
 	}
 }
 

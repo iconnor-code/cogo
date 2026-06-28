@@ -3,13 +3,29 @@ package server
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 
 	"github.com/iconnor-code/cogo/cerrs"
+	"github.com/iconnor-code/cogo/client"
 	"github.com/iconnor-code/cogo/core"
+	"github.com/iconnor-code/cogo/core/impl/registry"
+	cogointerceptor "github.com/iconnor-code/cogo/interceptor"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
+
+type managedServer struct {
+	name   string
+	server core.IServer
+}
+
+type ServerGroup struct {
+	servers []managedServer
+}
 
 type GrpcServer struct {
 	conf       core.IConfig
@@ -17,6 +33,12 @@ type GrpcServer struct {
 	listener   net.Listener
 	registry   core.IRegistry
 	baseServer *grpc.Server
+}
+
+type GrpcServiceOption struct {
+	PublicMethods     []string
+	UnaryInterceptors []grpc.UnaryServerInterceptor
+	RegisterServices  func(*grpc.Server) error
 }
 
 func WithGrpcRegistry(registry core.IRegistry) core.ServerOption {
@@ -48,6 +70,24 @@ func NewGrpcServer(config core.IConfig, logger core.ILogger, bs *grpc.Server, op
 	return s, nil
 }
 
+func NewGrpcServiceServer(config core.IConfig, logger core.ILogger, opt GrpcServiceOption) (*GrpcServer, error) {
+	baseServer := grpc.NewServer(grpc.ChainUnaryInterceptor(
+		unaryInterceptors(config, logger, opt)...,
+	))
+	if err := registerUnaryServices(baseServer, opt); err != nil {
+		return nil, err
+	}
+	if err := registerHealthServer(baseServer, config); err != nil {
+		return nil, err
+	}
+
+	reg, err := newConsulRegistry(config, logger)
+	if err != nil {
+		return nil, err
+	}
+	return NewGrpcServer(config, logger, baseServer, WithGrpcRegistry(reg))
+}
+
 func (s *GrpcServer) Start() error {
 	go func() {
 		listen, _ := core.GetString(s.conf, "grpc.listen")
@@ -76,4 +116,119 @@ func (s *GrpcServer) Stop() error {
 	s.baseServer.GracefulStop()
 
 	return nil
+}
+
+func NewServerGroup(servers ...core.IServer) *ServerGroup {
+	group := &ServerGroup{}
+	for _, srv := range servers {
+		group.AddServer("", srv)
+	}
+	return group
+}
+
+func (s *ServerGroup) AddServer(name string, server core.IServer) {
+	s.servers = append(s.servers, managedServer{name: name, server: server})
+}
+
+func NewGrpcServerGroup[T core.IServer](
+	config core.IConfig,
+	logger core.ILogger,
+	newGrpcServer func(core.IConfig, core.ILogger) (T, error),
+) (*ServerGroup, error) {
+	grpcServer, err := newGrpcServer(config, logger)
+	if err != nil {
+		return nil, fmt.Errorf("init grpc server: %w", err)
+	}
+
+	group := NewServerGroup()
+	group.AddServer("grpc", grpcServer)
+	if metricsEnabled(config) {
+		metricsServer, err := NewMetricsServer(config, logger)
+		if err != nil {
+			return nil, fmt.Errorf("init grpc metrics server: %w", err)
+		}
+		group.AddServer("metrics", metricsServer)
+	}
+
+	return group, nil
+}
+
+func (s *ServerGroup) Start() error {
+	for i, srv := range s.servers {
+		if err := srv.server.Start(); err != nil {
+			_ = s.stopStarted(i - 1)
+			return fmt.Errorf("start %s server: %w", srv.name, err)
+		}
+	}
+	return nil
+}
+
+func (s *ServerGroup) Stop() error {
+	return s.stopStarted(len(s.servers) - 1)
+}
+
+func (s *ServerGroup) stopStarted(last int) error {
+	var errs error
+	for i := last; i >= 0; i-- {
+		if err := s.servers[i].server.Stop(); err != nil {
+			errs = errors.Join(errs, fmt.Errorf("stop %s server: %w", s.servers[i].name, err))
+		}
+	}
+	return errs
+}
+
+func publicMethodsWithHealth(methods []string) []string {
+	publicMethods := append([]string{}, methods...)
+	return append(publicMethods,
+		grpc_health_v1.Health_Check_FullMethodName,
+		grpc_health_v1.Health_Watch_FullMethodName,
+	)
+}
+
+func unaryInterceptors(config core.IConfig, logger core.ILogger, opt GrpcServiceOption) []grpc.UnaryServerInterceptor {
+	interceptors := []grpc.UnaryServerInterceptor{
+		cogointerceptor.SrvCtxInterceptor(config, logger),
+		cogointerceptor.RecoveryInterceptor(),
+		cogointerceptor.CycleCheckInterceptor(),
+		cogointerceptor.RequestLogInterceptor(),
+		cogointerceptor.BizInfoInterceptor(),
+		cogointerceptor.UserInfoInterceptor(publicMethodsWithHealth(opt.PublicMethods)...),
+	}
+	return append(interceptors, opt.UnaryInterceptors...)
+}
+
+func registerUnaryServices(baseServer *grpc.Server, opt GrpcServiceOption) error {
+	if opt.RegisterServices == nil {
+		return nil
+	}
+	return opt.RegisterServices(baseServer)
+}
+
+func registerHealthServer(baseServer *grpc.Server, config core.IConfig) error {
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(baseServer, healthServer)
+
+	registryName, err := core.GetString(config, "registry.name")
+	if err != nil {
+		return err
+	}
+	healthServer.SetServingStatus(registryName, grpc_health_v1.HealthCheckResponse_SERVING)
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	return nil
+}
+
+func newConsulRegistry(config core.IConfig, logger core.ILogger) (core.IRegistry, error) {
+	consul, err := client.NewConsul(config)
+	if err != nil {
+		return nil, err
+	}
+	return registry.NewRegistry(config, logger, registry.WithConsulClient(consul))
+}
+
+func metricsEnabled(config core.IConfig) bool {
+	enabled, ok := lookupConfig(config, "metrics.enable").(bool)
+	if ok {
+		return enabled
+	}
+	return config.Get("metrics") != nil
 }

@@ -1,0 +1,256 @@
+package server
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/iconnor-code/cogo/cerrs"
+	"github.com/iconnor-code/cogo/core"
+	"github.com/iconnor-code/cogo/pkg/token"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+)
+
+type GatewayRegister func(context.Context, *runtime.ServeMux, string, []grpc.DialOption) error
+type GatewayMuxFactory func(context.Context, core.IConfig) (*runtime.ServeMux, error)
+
+type HTTPServer struct {
+	config  core.IConfig
+	logger  core.ILogger
+	handler http.Handler
+	server  *http.Server
+}
+
+func NewHTTPServer(config core.IConfig, logger core.ILogger, handler *runtime.ServeMux) (*HTTPServer, error) {
+	return NewHTTPServerWithHandler(config, logger, handler)
+}
+
+func NewHTTPServerWithHandler(config core.IConfig, logger core.ILogger, handler http.Handler) (*HTTPServer, error) {
+	s := &HTTPServer{
+		config:  config,
+		logger:  logger,
+		handler: handler,
+	}
+	return s, nil
+}
+
+func NewHTTPGatewayServerGroup[T core.IServer](
+	config core.IConfig,
+	logger core.ILogger,
+	newGrpcServer func(core.IConfig, core.ILogger) (T, error),
+	newGatewayMux GatewayMuxFactory,
+	swaggerOption SwaggerOption,
+) (*ServerGroup, error) {
+	grpcServer, err := newGrpcServer(config, logger)
+	if err != nil {
+		return nil, fmt.Errorf("init grpc server: %w", err)
+	}
+
+	mux, err := newGatewayMux(context.Background(), config)
+	if err != nil {
+		return nil, fmt.Errorf("init grpc gateway: %w", err)
+	}
+	handler := NewSwaggerHandler(mux, swaggerOption)
+	httpServer, err := NewHTTPServerWithHandler(config, logger, handler)
+	if err != nil {
+		return nil, fmt.Errorf("init http server: %w", err)
+	}
+
+	group := NewServerGroup()
+	group.AddServer("grpc", grpcServer)
+	group.AddServer("http", httpServer)
+	if metricsEnabled(config) {
+		metricsServer, err := NewMetricsServer(config, logger)
+		if err != nil {
+			return nil, fmt.Errorf("init http metrics server: %w", err)
+		}
+		group.AddServer("metrics", metricsServer)
+	}
+
+	return group, nil
+}
+
+func NewGatewayMux(ctx context.Context, config core.IConfig, registers ...GatewayRegister) (*runtime.ServeMux, error) {
+	mux := runtime.NewServeMux(
+		runtime.WithIncomingHeaderMatcher(func(header string) (string, bool) {
+			if strings.EqualFold(header, token.JwtTokenKey) {
+				return token.JwtTokenKey, true
+			}
+			return runtime.DefaultHeaderMatcher(header)
+		}),
+	)
+
+	endpoint, err := GRPCEndpoint(config)
+	if err != nil {
+		return nil, err
+	}
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	for _, register := range registers {
+		if err := register(ctx, mux, endpoint, opts); err != nil {
+			return nil, err
+		}
+	}
+	return mux, nil
+}
+
+func (s *HTTPServer) Start() error {
+	startHTTPServer := func() (*http.Server, error) {
+		listen, err := core.GetString(s.config, "http.listen")
+		if err != nil {
+			return nil, cerrs.Wrap(err)
+		}
+		httpSrv := &http.Server{
+			Handler: s.handler,
+			Addr:    listen,
+		}
+		listener, err := net.Listen("tcp", httpSrv.Addr)
+		if err != nil {
+			return nil, cerrs.Wrap(err)
+		}
+		go func() {
+			s.logger.Info("http server start", zap.String("listen", listen))
+			err := httpSrv.Serve(listener)
+			if err != nil && err != http.ErrServerClosed {
+				s.logger.Error("http server start failed", zap.Error(err))
+			}
+		}()
+		return httpSrv, nil
+	}
+
+	startHTTPSServer := func(sslConfMap map[string]string) (*http.Server, error) {
+		listen, err := core.GetString(s.config, "http.listen")
+		if err != nil {
+			return nil, cerrs.Wrap(err)
+		}
+		httpsSrv := &http.Server{
+			Handler: s.handler,
+			Addr:    listen,
+		}
+		listener, err := net.Listen("tcp", httpsSrv.Addr)
+		if err != nil {
+			return nil, cerrs.Wrap(err)
+		}
+		go func() {
+			s.logger.Info("https server start", zap.String("listen", listen))
+			err := httpsSrv.ServeTLS(listener, sslConfMap["cert_file"], sslConfMap["key_file"])
+			if err != nil && err != http.ErrServerClosed {
+				s.logger.Error("https server start failed", zap.Error(err))
+			}
+		}()
+		return httpsSrv, nil
+	}
+
+	var err error
+	sslConf := s.config.Get("http.ssl")
+	if sslConf != nil {
+		sslConfMap, ok := sslConf.(map[string]any)
+		if !ok {
+			return cerrs.New(fmt.Sprintf("https ssl config is error: %+v", sslConf))
+		}
+		certFile, ok := sslConfMap["cert_file"].(string)
+		if !ok || certFile == "" {
+			return cerrs.New("https ssl cert_file is required")
+		}
+		keyFile, ok := sslConfMap["key_file"].(string)
+		if !ok || keyFile == "" {
+			return cerrs.New("https ssl key_file is required")
+		}
+		s.server, err = startHTTPSServer(map[string]string{
+			"cert_file": certFile,
+			"key_file":  keyFile,
+		})
+		if err != nil {
+			return err
+		}
+	} else {
+		s.server, err = startHTTPServer()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *HTTPServer) Stop() error {
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*5)
+	defer cancel()
+	if s.server != nil {
+		if err := s.server.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func GRPCEndpoint(config core.IConfig) (string, error) {
+	if endpoint, err := core.GetString(config, "grpc.gateway_endpoint"); err == nil && endpoint != "" {
+		return endpoint, nil
+	}
+
+	address, _ := core.GetString(config, "registry.address")
+	if address == "" || address == "0.0.0.0" {
+		address = "127.0.0.1"
+	}
+
+	switch port := lookupConfig(config, "registry.port").(type) {
+	case int:
+		return fmt.Sprintf("%s:%d", address, port), nil
+	case int64:
+		return fmt.Sprintf("%s:%d", address, port), nil
+	case uint64:
+		return fmt.Sprintf("%s:%d", address, port), nil
+	case string:
+		if strings.Contains(port, ":") {
+			return port, nil
+		}
+		if _, err := strconv.Atoi(port); err == nil {
+			return fmt.Sprintf("%s:%s", address, port), nil
+		}
+	}
+
+	listen, err := core.GetString(config, "grpc.listen")
+	if err != nil {
+		return "", cerrs.Wrap(err)
+	}
+	if strings.HasPrefix(listen, ":") {
+		return "127.0.0.1" + listen, nil
+	}
+	if listen == "" {
+		return "", cerrs.New("grpc endpoint is required")
+	}
+	return listen, nil
+}
+
+func lookupConfig(config core.IConfig, key string) any {
+	if config == nil {
+		return nil
+	}
+	if value := config.Get(key); value != nil {
+		return value
+	}
+	parts := strings.Split(key, ".")
+	if len(parts) < 2 {
+		return nil
+	}
+	var current any = config.Get(parts[0])
+	for _, part := range parts[1:] {
+		switch node := current.(type) {
+		case map[string]any:
+			current = node[part]
+		case map[string]string:
+			current = node[part]
+		case map[string]int:
+			current = node[part]
+		default:
+			return nil
+		}
+	}
+	return current
+}
