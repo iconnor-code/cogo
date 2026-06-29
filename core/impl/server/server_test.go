@@ -7,16 +7,10 @@ import (
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/iconnor-code/cogo/core"
+	cogoconfig "github.com/iconnor-code/cogo/core/impl/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
 )
-
-type testConfig struct {
-	data map[string]any
-}
-
-func (c *testConfig) Get(key string) any { return c.data[key] }
-func (c *testConfig) ReLoad() error      { return nil }
 
 type testLogger struct{}
 
@@ -64,9 +58,9 @@ func (r *testRegistry) DeRegister(context.Context) error {
 }
 
 func TestHTTPServerStartReturnsListenError(t *testing.T) {
-	s, err := NewHTTPServer(&testConfig{data: map[string]any{
-		"http": map[string]any{"listen": "invalid-address"},
-	}}, &testLogger{}, runtime.NewServeMux())
+	s, err := NewHTTPServer(&cogoconfig.Config{
+		Config: core.Config{HTTP: core.HTTPConfig{Listen: "invalid-address"}},
+	}, &testLogger{}, runtime.NewServeMux())
 	if err != nil {
 		t.Fatalf("new http server: %v", err)
 	}
@@ -77,9 +71,9 @@ func TestHTTPServerStartReturnsListenError(t *testing.T) {
 }
 
 func TestMetricsServerStartReturnsListenError(t *testing.T) {
-	s, err := NewMetricsServer(&testConfig{data: map[string]any{
-		"metrics": map[string]any{"listen": "invalid-address"},
-	}}, &testLogger{})
+	s, err := NewMetricsServer(&cogoconfig.Config{
+		Config: core.Config{Metrics: core.MetricsConfig{Listen: "invalid-address"}},
+	}, &testLogger{})
 	if err != nil {
 		t.Fatalf("new metrics server: %v", err)
 	}
@@ -90,9 +84,9 @@ func TestMetricsServerStartReturnsListenError(t *testing.T) {
 }
 
 func TestMetricsServerStopBeforeStartIsNoop(t *testing.T) {
-	s, err := NewMetricsServer(&testConfig{data: map[string]any{
-		"metrics": map[string]any{"listen": "127.0.0.1:0"},
-	}}, &testLogger{})
+	s, err := NewMetricsServer(&cogoconfig.Config{
+		Config: core.Config{Metrics: core.MetricsConfig{Listen: "127.0.0.1:0"}},
+	}, &testLogger{})
 	if err != nil {
 		t.Fatalf("new metrics server: %v", err)
 	}
@@ -105,7 +99,7 @@ func TestMetricsServerStopBeforeStartIsNoop(t *testing.T) {
 func TestGrpcServerStartStopRegistersAndDeregisters(t *testing.T) {
 	registry := &testRegistry{}
 	s := &GrpcServer{
-		conf:       &testConfig{data: map[string]any{"grpc.listen": "bufconn"}},
+		conf:       &cogoconfig.Config{Config: core.Config{GRPC: core.GRPCConfig{Listen: "bufconn"}}},
 		logger:     &testLogger{},
 		listener:   bufconn.Listen(1024),
 		registry:   registry,
@@ -127,13 +121,30 @@ func TestGrpcServerStartStopRegistersAndDeregisters(t *testing.T) {
 	}
 }
 
-func TestGRPCEndpointPrefersGatewayEndpoint(t *testing.T) {
-	endpoint, err := GRPCEndpoint(&testConfig{data: map[string]any{
-		"grpc": map[string]any{
-			"gateway_endpoint": "gateway:9090",
-			"listen":           ":9090",
+func TestRegistryEnabledRequiresCompleteConfig(t *testing.T) {
+	if registryEnabled(&cogoconfig.Config{}) {
+		t.Fatalf("expected registry to be disabled when config is empty")
+	}
+
+	config := &cogoconfig.Config{
+		Config: core.Config{
+			Consul: core.ConsulConfig{Address: "127.0.0.1:8500"},
+			Registry: core.RegistryConfig{
+				Name:    "account",
+				Address: "127.0.0.1",
+				Port:    10000,
+			},
 		},
-	}})
+	}
+	if !registryEnabled(config) {
+		t.Fatalf("expected registry to be enabled when config is complete")
+	}
+}
+
+func TestGRPCEndpointPrefersGatewayEndpoint(t *testing.T) {
+	endpoint, err := GRPCEndpoint(&cogoconfig.Config{
+		Config: core.Config{GRPC: core.GRPCConfig{GatewayEndpoint: "gateway:9090", Listen: ":9090"}},
+	})
 	if err != nil {
 		t.Fatalf("grpc endpoint: %v", err)
 	}
@@ -143,9 +154,9 @@ func TestGRPCEndpointPrefersGatewayEndpoint(t *testing.T) {
 }
 
 func TestGRPCEndpointFallsBackToListen(t *testing.T) {
-	endpoint, err := GRPCEndpoint(&testConfig{data: map[string]any{
-		"grpc": map[string]any{"listen": ":9090"},
-	}})
+	endpoint, err := GRPCEndpoint(&cogoconfig.Config{
+		Config: core.Config{GRPC: core.GRPCConfig{Listen: ":9090"}},
+	})
 	if err != nil {
 		t.Fatalf("grpc endpoint: %v", err)
 	}
@@ -172,6 +183,32 @@ func TestServerGroupStopsStartedServersOnStartError(t *testing.T) {
 	}
 	if second.started {
 		t.Fatalf("second server should not be marked started")
+	}
+}
+
+func TestNewGrpcServerGroupAddsMetricsOnlyWhenEnabled(t *testing.T) {
+	config := &cogoconfig.Config{
+		Config: core.Config{Metrics: core.MetricsConfig{Enable: false, Listen: "127.0.0.1:0"}},
+	}
+	group, err := NewGrpcServerGroup(config, &testLogger{}, func(core.IConfig, core.ILogger) (*testServer, error) {
+		return &testServer{}, nil
+	})
+	if err != nil {
+		t.Fatalf("new grpc server group: %v", err)
+	}
+	if len(group.servers) != 1 {
+		t.Fatalf("expected one server when metrics disabled, got %d", len(group.servers))
+	}
+
+	config.Metrics.Enable = true
+	group, err = NewGrpcServerGroup(config, &testLogger{}, func(core.IConfig, core.ILogger) (*testServer, error) {
+		return &testServer{}, nil
+	})
+	if err != nil {
+		t.Fatalf("new grpc server group with metrics: %v", err)
+	}
+	if len(group.servers) != 2 {
+		t.Fatalf("expected two servers when metrics enabled, got %d", len(group.servers))
 	}
 }
 

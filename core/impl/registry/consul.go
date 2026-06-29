@@ -21,14 +21,6 @@ func (r *Registry) consulRegister() error {
 	if err != nil {
 		return err
 	}
-	interval, err := core.GetString(r.config, "registry.health_check.interval")
-	if err != nil {
-		return err
-	}
-	timeout, err := core.GetString(r.config, "registry.health_check.timeout")
-	if err != nil {
-		return err
-	}
 	instanceID, err := r.getInstanceID()
 	if err != nil {
 		return err
@@ -39,8 +31,8 @@ func (r *Registry) consulRegister() error {
 		Address: address, Port: port,
 		Check: &consul.AgentServiceCheck{
 			GRPC:     fmt.Sprintf("%s:%d", address, port),
-			Interval: interval,
-			Timeout:  timeout,
+			Interval: r.config.GetRegistry().HealthCheck.Interval,
+			Timeout:  r.config.GetRegistry().HealthCheck.Timeout,
 			Status:   consul.HealthPassing,
 		},
 	}

@@ -22,16 +22,8 @@ func BizInfoInterceptor() grpc.UnaryServerInterceptor {
 		config := srvCtx.Config()
 
 		bizInfo := &srvctx.BizInfo{}
-		bizID, err := core.GetInt(config, "biz_id")
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
-		}
-		bizName, err := core.GetString(config, "biz_name")
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
-		}
-		bizInfo.BizID = int32(bizID)
-		bizInfo.BizName = bizName
+		bizInfo.BizID = int32(config.GetBizID())
+		bizInfo.BizName = config.GetBizName()
 
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {

@@ -8,19 +8,13 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/iconnor-code/cogo/core"
+	cogoconfig "github.com/iconnor-code/cogo/core/impl/config"
 	"github.com/iconnor-code/cogo/core/impl/srvctx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
-
-type userInfoTestConfig struct {
-	data map[string]any
-}
-
-func (c *userInfoTestConfig) Get(key string) any { return c.data[key] }
-func (c *userInfoTestConfig) ReLoad() error      { return nil }
 
 func makeAccessToken(secret string, claims jwt.MapClaims) string {
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -68,11 +62,7 @@ func TestToUint32(t *testing.T) {
 }
 
 func TestUserInfoInterceptorSuccess(t *testing.T) {
-	conf := &userInfoTestConfig{
-		data: map[string]any{
-			"jwt.access_secret": "secret",
-		},
-	}
+	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
 	sctx := srvctx.NewSrvCtx(&testLogger{}, conf)
 	token := makeAccessToken("secret", jwt.MapClaims{
 		"user_id":    float64(123),
@@ -108,11 +98,7 @@ func TestUserInfoInterceptorSuccess(t *testing.T) {
 }
 
 func TestUserInfoInterceptorInvalidToken(t *testing.T) {
-	conf := &userInfoTestConfig{
-		data: map[string]any{
-			"jwt.access_secret": "secret",
-		},
-	}
+	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
 	sctx := srvctx.NewSrvCtx(&testLogger{}, conf)
 	md := metadata.Pairs("access_token", "bad-token")
 	ctx := metadata.NewIncomingContext(context.Background(), md)

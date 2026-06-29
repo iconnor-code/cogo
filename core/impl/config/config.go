@@ -12,19 +12,22 @@ import (
 )
 
 type Config struct {
-	value    map[string]any
+	core.Config `mapstructure:",squash"`
+
 	filepath string
 	viper    *viper.Viper
 }
 
-func WithFilePath(filepath string) core.ConfigOption {
-	return func(c core.IConfig) error {
-		c.(*Config).filepath = filepath
+type ConfigOption func(*Config) error
+
+func WithFilePath(filepath string) ConfigOption {
+	return func(c *Config) error {
+		c.filepath = filepath
 		return nil
 	}
 }
 
-func NewConfig(opts ...core.ConfigOption) (*Config, error) {
+func NewConfig(opts ...ConfigOption) (*Config, error) {
 	config := &Config{
 		viper: viper.New(),
 	}
@@ -33,17 +36,66 @@ func NewConfig(opts ...core.ConfigOption) (*Config, error) {
 			return nil, cerrs.Wrap(err, "applying config option error")
 		}
 	}
-	if err := config.ReLoad(); err != nil {
+	if err := config.Reload(); err != nil {
 		return nil, err
 	}
 	return config, nil
 }
 
-func (ct *Config) Get(key string) any {
-	return ct.viper.Get(key)
+func Load[T any](opts ...ConfigOption) (*T, error) {
+	config, err := NewConfig(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var out T
+	if err := config.Unmarshal(&out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
-func (ct *Config) ReLoad() error {
+func (ct *Config) Unmarshal(out any) error {
+	if ct.viper == nil {
+		return cerrs.New("config viper not initialized")
+	}
+	if err := ct.viper.Unmarshal(out); err != nil {
+		return cerrs.Wrap(err, fmt.Sprintf("unmarshal config file error,filepath:%s", ct.filepath))
+	}
+	return nil
+}
+
+func (ct *Config) GetMode() string { return ct.Mode }
+
+func (ct *Config) GetBizID() int { return ct.BizID }
+
+func (ct *Config) GetBizName() string { return ct.BizName }
+
+func (ct *Config) GetGRPC() core.GRPCConfig { return ct.GRPC }
+
+func (ct *Config) GetHTTP() core.HTTPConfig { return ct.HTTP }
+
+func (ct *Config) GetLogger() core.LoggerConfig { return ct.Logger }
+
+func (ct *Config) GetMetrics() core.MetricsConfig { return ct.Metrics }
+
+func (ct *Config) GetMySQL() core.MySQLConfig { return ct.MySQL }
+
+func (ct *Config) GetRedis() core.RedisConfig { return ct.Redis }
+
+func (ct *Config) GetEtcd() core.EtcdConfig { return ct.Etcd }
+
+func (ct *Config) GetConsul() core.ConsulConfig { return ct.Consul }
+
+func (ct *Config) GetRegistry() core.RegistryConfig { return ct.Registry }
+
+func (ct *Config) GetSMTP() core.SMTPConfig { return ct.SMTP }
+
+func (ct *Config) GetJWT() core.JWTConfig { return ct.JWT }
+
+func (ct *Config) GetAdmin() core.AdminConfig { return ct.Admin }
+
+func (ct *Config) Reload() error {
 	if ct.filepath != "" {
 		return ct.loadFromFile()
 	}
@@ -67,10 +119,5 @@ func (ct *Config) loadFromFile() error {
 	if err := ct.viper.ReadInConfig(); err != nil {
 		return cerrs.Wrap(err, fmt.Sprintf("reading config file error,filepath:%s", ct.filepath))
 	}
-
-	err := ct.viper.Unmarshal(&ct.value)
-	if err != nil {
-		return cerrs.Wrap(err)
-	}
-	return nil
+	return ct.Unmarshal(ct)
 }

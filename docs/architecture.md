@@ -6,7 +6,7 @@
 
 ## 核心抽象
 
-- `core/IConfig`：配置获取与重载
+- `core/IConfig`：配置重载
 - `core/ILogger`：统一日志能力
 - `core/IServer`：服务生命周期（`Start` / `Stop`）
 - `core/IRegistry`：服务注册与反注册

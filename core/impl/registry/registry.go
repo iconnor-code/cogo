@@ -61,18 +61,10 @@ func (r *Registry) getInstanceID() (string, error) {
 	if r.instanceID != "" {
 		return r.instanceID, nil
 	}
-	name, err := core.GetString(r.config, "registry.name")
-	if err != nil {
-		return "", cerrs.Wrap(err)
-	}
-	address, err := core.GetString(r.config, "registry.address")
-	if err != nil {
-		return "", cerrs.Wrap(err)
-	}
-	port, err := core.GetInt(r.config, "registry.port")
-	if err != nil {
-		return "", cerrs.Wrap(err)
-	}
+	registryConf := r.config.GetRegistry()
+	name := registryConf.Name
+	address := registryConf.Address
+	port := registryConf.Port
 	r.instanceID = fmt.Sprintf("%s-%s:%d",
 		name,
 		address,
@@ -82,17 +74,6 @@ func (r *Registry) getInstanceID() (string, error) {
 }
 
 func (r *Registry) serviceConfig() (name string, address string, port int, err error) {
-	name, err = core.GetString(r.config, "registry.name")
-	if err != nil {
-		return "", "", 0, cerrs.Wrap(err)
-	}
-	address, err = core.GetString(r.config, "registry.address")
-	if err != nil {
-		return "", "", 0, cerrs.Wrap(err)
-	}
-	port, err = core.GetInt(r.config, "registry.port")
-	if err != nil {
-		return "", "", 0, cerrs.Wrap(err)
-	}
-	return name, address, port, nil
+	registryConf := r.config.GetRegistry()
+	return registryConf.Name, registryConf.Address, registryConf.Port, nil
 }

@@ -93,11 +93,7 @@ func (l *Logger) init() error {
 	infoCore := zapcore.NewCore(fileEncoder, infoWriter, infoLevelEnabler)
 	errCore := zapcore.NewCore(fileEncoder, errWriter, errLevelEnabler)
 	coreArr := []zapcore.Core{infoCore, errCore}
-	mode, err := core.GetString(l.conf, "mode")
-	if err != nil {
-		return cerrs.Wrap(err)
-	}
-	if mode == "debug" {
+	if l.conf.GetMode() == "debug" {
 		coreArr = append(coreArr, zapcore.NewCore(stdoutEncoder, getStdoutWriter(), zap.DebugLevel))
 	}
 
@@ -145,27 +141,12 @@ func getStdoutEncoder() zapcore.Encoder {
 }
 
 func getLogFileConfig(conf core.IConfig, filename string) (*lumberjack.Logger, error) {
-	filePath, err := core.GetString(conf, "logger.file_path")
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
-	maxSize, err := core.GetInt(conf, "logger.max_size")
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
-	maxAge, err := core.GetInt(conf, "logger.max_age")
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
-	maxBackups, err := core.GetInt(conf, "logger.max_backups")
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
+	loggerConf := conf.GetLogger()
 	return &lumberjack.Logger{
-		Filename:   filePath + "/" + filename,
-		MaxSize:    maxSize,
-		MaxAge:     maxAge,
-		MaxBackups: maxBackups,
+		Filename:   loggerConf.FilePath + "/" + filename,
+		MaxSize:    loggerConf.MaxSize,
+		MaxAge:     loggerConf.MaxAge,
+		MaxBackups: loggerConf.MaxBackups,
 		Compress:   false,
 	}, nil
 }

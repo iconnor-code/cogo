@@ -27,10 +27,7 @@ func NewMetricsServer(config core.IConfig, logger core.ILogger) (*MetricsServer,
 }
 
 func (s *MetricsServer) Start() error {
-	listen, err := core.GetString(s.config, "metrics.listen")
-	if err != nil {
-		return cerrs.Wrap(err)
-	}
+	listen := s.config.GetMetrics().Listen
 	httpSrv := &http.Server{
 		Addr:    listen,
 		Handler: promhttp.Handler(),

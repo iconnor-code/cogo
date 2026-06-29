@@ -5,14 +5,9 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/iconnor-code/cogo/core"
+	cogoconfig "github.com/iconnor-code/cogo/core/impl/config"
 )
-
-type testConfig struct {
-	data map[string]any
-}
-
-func (c *testConfig) Get(key string) any { return c.data[key] }
-func (c *testConfig) ReLoad() error      { return nil }
 
 func signToken(t *testing.T, method jwt.SigningMethod, secret string, claims jwt.MapClaims) string {
 	t.Helper()
@@ -25,9 +20,7 @@ func signToken(t *testing.T, method jwt.SigningMethod, secret string, claims jwt
 }
 
 func TestParseTokenSuccess(t *testing.T) {
-	j := NewJwtToken(&testConfig{data: map[string]any{
-		"jwt.access_secret": "secret",
-	}})
+	j := NewJwtToken(&cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}})
 	accessToken := signToken(t, jwt.SigningMethodHS256, "secret", jwt.MapClaims{
 		"user_id":    float64(123),
 		"user_email": "u@test.com",
@@ -44,9 +37,7 @@ func TestParseTokenSuccess(t *testing.T) {
 }
 
 func TestParseTokenRejectsExpiredToken(t *testing.T) {
-	j := NewJwtToken(&testConfig{data: map[string]any{
-		"jwt.access_secret": "secret",
-	}})
+	j := NewJwtToken(&cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}})
 	accessToken := signToken(t, jwt.SigningMethodHS256, "secret", jwt.MapClaims{
 		"exp": time.Now().Add(-time.Hour).Unix(),
 	})
@@ -57,9 +48,7 @@ func TestParseTokenRejectsExpiredToken(t *testing.T) {
 }
 
 func TestParseTokenRejectsUnexpectedSigningMethod(t *testing.T) {
-	j := NewJwtToken(&testConfig{data: map[string]any{
-		"jwt.access_secret": "secret",
-	}})
+	j := NewJwtToken(&cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}})
 	accessToken := signToken(t, jwt.SigningMethodHS384, "secret", jwt.MapClaims{
 		"exp": time.Now().Add(time.Hour).Unix(),
 	})

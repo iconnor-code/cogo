@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -66,14 +65,9 @@ func NewHTTPGatewayServerGroup[T core.IServer](
 	group := NewServerGroup()
 	group.AddServer("grpc", grpcServer)
 	group.AddServer("http", httpServer)
-	if metricsEnabled(config) {
-		metricsServer, err := NewMetricsServer(config, logger)
-		if err != nil {
-			return nil, fmt.Errorf("init http metrics server: %w", err)
-		}
-		group.AddServer("metrics", metricsServer)
+	if err := addMetricsServer(config, logger, group); err != nil {
+		return nil, err
 	}
-
 	return group, nil
 }
 
@@ -102,10 +96,7 @@ func NewGatewayMux(ctx context.Context, config core.IConfig, registers ...Gatewa
 
 func (s *HTTPServer) Start() error {
 	startHTTPServer := func() (*http.Server, error) {
-		listen, err := core.GetString(s.config, "http.listen")
-		if err != nil {
-			return nil, cerrs.Wrap(err)
-		}
+		listen := s.config.GetHTTP().Listen
 		httpSrv := &http.Server{
 			Handler: s.handler,
 			Addr:    listen,
@@ -125,10 +116,7 @@ func (s *HTTPServer) Start() error {
 	}
 
 	startHTTPSServer := func(sslConfMap map[string]string) (*http.Server, error) {
-		listen, err := core.GetString(s.config, "http.listen")
-		if err != nil {
-			return nil, cerrs.Wrap(err)
-		}
+		listen := s.config.GetHTTP().Listen
 		httpsSrv := &http.Server{
 			Handler: s.handler,
 			Addr:    listen,
@@ -148,23 +136,17 @@ func (s *HTTPServer) Start() error {
 	}
 
 	var err error
-	sslConf := s.config.Get("http.ssl")
-	if sslConf != nil {
-		sslConfMap, ok := sslConf.(map[string]any)
-		if !ok {
-			return cerrs.New(fmt.Sprintf("https ssl config is error: %+v", sslConf))
-		}
-		certFile, ok := sslConfMap["cert_file"].(string)
-		if !ok || certFile == "" {
+	httpConf := s.config.GetHTTP()
+	if httpConf.SSL.CertFile != "" || httpConf.SSL.KeyFile != "" {
+		if httpConf.SSL.CertFile == "" {
 			return cerrs.New("https ssl cert_file is required")
 		}
-		keyFile, ok := sslConfMap["key_file"].(string)
-		if !ok || keyFile == "" {
+		if httpConf.SSL.KeyFile == "" {
 			return cerrs.New("https ssl key_file is required")
 		}
 		s.server, err = startHTTPSServer(map[string]string{
-			"cert_file": certFile,
-			"key_file":  keyFile,
+			"cert_file": httpConf.SSL.CertFile,
+			"key_file":  httpConf.SSL.KeyFile,
 		})
 		if err != nil {
 			return err
@@ -190,35 +172,22 @@ func (s *HTTPServer) Stop() error {
 }
 
 func GRPCEndpoint(config core.IConfig) (string, error) {
-	if endpoint, err := core.GetString(config, "grpc.gateway_endpoint"); err == nil && endpoint != "" {
-		return endpoint, nil
+	grpcConf := config.GetGRPC()
+	if grpcConf.GatewayEndpoint != "" {
+		return grpcConf.GatewayEndpoint, nil
 	}
 
-	address, _ := core.GetString(config, "registry.address")
+	registryConf := config.GetRegistry()
+	address := registryConf.Address
 	if address == "" || address == "0.0.0.0" {
 		address = "127.0.0.1"
 	}
 
-	switch port := lookupConfig(config, "registry.port").(type) {
-	case int:
-		return fmt.Sprintf("%s:%d", address, port), nil
-	case int64:
-		return fmt.Sprintf("%s:%d", address, port), nil
-	case uint64:
-		return fmt.Sprintf("%s:%d", address, port), nil
-	case string:
-		if strings.Contains(port, ":") {
-			return port, nil
-		}
-		if _, err := strconv.Atoi(port); err == nil {
-			return fmt.Sprintf("%s:%s", address, port), nil
-		}
+	if registryConf.Port != 0 {
+		return fmt.Sprintf("%s:%d", address, registryConf.Port), nil
 	}
 
-	listen, err := core.GetString(config, "grpc.listen")
-	if err != nil {
-		return "", cerrs.Wrap(err)
-	}
+	listen := grpcConf.Listen
 	if strings.HasPrefix(listen, ":") {
 		return "127.0.0.1" + listen, nil
 	}
@@ -226,31 +195,4 @@ func GRPCEndpoint(config core.IConfig) (string, error) {
 		return "", cerrs.New("grpc endpoint is required")
 	}
 	return listen, nil
-}
-
-func lookupConfig(config core.IConfig, key string) any {
-	if config == nil {
-		return nil
-	}
-	if value := config.Get(key); value != nil {
-		return value
-	}
-	parts := strings.Split(key, ".")
-	if len(parts) < 2 {
-		return nil
-	}
-	var current any = config.Get(parts[0])
-	for _, part := range parts[1:] {
-		switch node := current.(type) {
-		case map[string]any:
-			current = node[part]
-		case map[string]string:
-			current = node[part]
-		case map[string]int:
-			current = node[part]
-		default:
-			return nil
-		}
-	}
-	return current
 }

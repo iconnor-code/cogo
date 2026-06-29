@@ -32,14 +32,9 @@ func (j *JwtToken) GenerateToken(userInfo map[string]any) error {
 	if err != nil {
 		return err
 	}
-	accessExpire, err := core.GetInt(j.config, "jwt.access_expire")
-	if err != nil {
-		return cerrs.Wrap(err)
-	}
-	refreshExpire, err := core.GetInt(j.config, "jwt.refresh_expire")
-	if err != nil {
-		return cerrs.Wrap(err)
-	}
+	jwtConf := j.config.GetJWT()
+	accessExpire := jwtConf.AccessExpire
+	refreshExpire := jwtConf.RefreshExpire
 	j.AccessToken = accessToken
 	j.RefreshToken = refreshToken
 	j.AccessExpireTime = time.Now().Add(time.Duration(accessExpire) * time.Hour)
@@ -50,11 +45,7 @@ func (j *JwtToken) GenerateToken(userInfo map[string]any) error {
 
 func (j *JwtToken) ParseToken(accessToken string) (map[string]any, error) {
 	token, err := jwt.Parse(accessToken, func(token *jwt.Token) (any, error) {
-		secret, err := core.GetString(j.config, "jwt.access_secret")
-		if err != nil {
-			return nil, cerrs.Wrap(err)
-		}
-		return []byte(secret), nil
+		return []byte(j.config.GetJWT().AccessSecret), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
 		return nil, cerrs.Wrap(err)
@@ -70,14 +61,9 @@ func (j *JwtToken) ParseToken(accessToken string) (map[string]any, error) {
 }
 
 func (j *JwtToken) generateAccessToken(userInfo map[string]any) (string, error) {
-	accessExpire, err := core.GetInt(j.config, "jwt.access_expire")
-	if err != nil {
-		return "", cerrs.Wrap(err)
-	}
-	secret, err := core.GetString(j.config, "jwt.access_secret")
-	if err != nil {
-		return "", cerrs.Wrap(err)
-	}
+	jwtConf := j.config.GetJWT()
+	accessExpire := jwtConf.AccessExpire
+	secret := jwtConf.AccessSecret
 	t := jwt.New(jwt.SigningMethodHS256)
 
 	claims := jwt.MapClaims{}

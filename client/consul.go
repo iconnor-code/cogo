@@ -12,12 +12,8 @@ type Consul struct {
 }
 
 func NewConsul(config core.IConfig) (*Consul, error) {
-	address, err := core.GetString(config, "consul.address")
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
 	defaultConfig := api.DefaultConfig()
-	defaultConfig.Address = address
+	defaultConfig.Address = config.GetConsul().Address
 
 	defaultConsul, err := api.NewClient(defaultConfig)
 	if err != nil {

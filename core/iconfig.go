@@ -1,14 +1,123 @@
 // Package core core interface
 package core
 
-type IConfVal interface {
-	Get(key string) any
+type IConfig interface {
+	GetMode() string
+	GetBizID() int
+	GetBizName() string
+	GetGRPC() GRPCConfig
+	GetHTTP() HTTPConfig
+	GetLogger() LoggerConfig
+	GetMetrics() MetricsConfig
+	GetMySQL() MySQLConfig
+	GetRedis() RedisConfig
+	GetEtcd() EtcdConfig
+	GetConsul() ConsulConfig
+	GetRegistry() RegistryConfig
+	GetSMTP() SMTPConfig
+	GetJWT() JWTConfig
+	GetAdmin() AdminConfig
+	Reload() error
 }
 
-type (
-	ConfigOption func(IConfig) error
-	IConfig      interface {
-		Get(key string) any
-		ReLoad() error
-	}
-)
+type Config struct {
+	Mode    string `mapstructure:"mode" yaml:"mode"`
+	BizID   int    `mapstructure:"biz_id" yaml:"biz_id"`
+	BizName string `mapstructure:"biz_name" yaml:"biz_name"`
+
+	GRPC     GRPCConfig     `mapstructure:"grpc" yaml:"grpc"`
+	HTTP     HTTPConfig     `mapstructure:"http" yaml:"http"`
+	Logger   LoggerConfig   `mapstructure:"logger" yaml:"logger"`
+	Metrics  MetricsConfig  `mapstructure:"metrics" yaml:"metrics"`
+	MySQL    MySQLConfig    `mapstructure:"mysql" yaml:"mysql"`
+	Redis    RedisConfig    `mapstructure:"redis" yaml:"redis"`
+	Etcd     EtcdConfig     `mapstructure:"etcd" yaml:"etcd"`
+	Consul   ConsulConfig   `mapstructure:"consul" yaml:"consul"`
+	Registry RegistryConfig `mapstructure:"registry" yaml:"registry"`
+	SMTP     SMTPConfig     `mapstructure:"smtp" yaml:"smtp"`
+	JWT      JWTConfig      `mapstructure:"jwt" yaml:"jwt"`
+	Admin    AdminConfig    `mapstructure:"admin" yaml:"admin"`
+}
+
+type GRPCConfig struct {
+	Listen          string `mapstructure:"listen" yaml:"listen"`
+	GatewayEndpoint string `mapstructure:"gateway_endpoint" yaml:"gateway_endpoint"`
+}
+
+type HTTPConfig struct {
+	Listen string        `mapstructure:"listen" yaml:"listen"`
+	SSL    HTTPSSLConfig `mapstructure:"ssl" yaml:"ssl"`
+}
+
+type HTTPSSLConfig struct {
+	CertFile string `mapstructure:"cert_file" yaml:"cert_file"`
+	KeyFile  string `mapstructure:"key_file" yaml:"key_file"`
+}
+
+type LoggerConfig struct {
+	Level      int    `mapstructure:"level" yaml:"level"`
+	FilePath   string `mapstructure:"file_path" yaml:"file_path"`
+	MaxSize    int    `mapstructure:"max_size" yaml:"max_size"`
+	MaxBackups int    `mapstructure:"max_backups" yaml:"max_backups"`
+	MaxAge     int    `mapstructure:"max_age" yaml:"max_age"`
+}
+
+type MetricsConfig struct {
+	Enable bool   `mapstructure:"enable" yaml:"enable"`
+	Listen string `mapstructure:"listen" yaml:"listen"`
+	Prefix string `mapstructure:"prefix" yaml:"prefix"`
+}
+
+type MySQLConfig struct {
+	DSN  string          `mapstructure:"dsn" yaml:"dsn"`
+	Pool MySQLPoolConfig `mapstructure:"pool" yaml:"pool"`
+}
+
+type MySQLPoolConfig struct {
+	MaxOpenConns int `mapstructure:"max_open_conns" yaml:"max_open_conns"`
+	MaxIdleConns int `mapstructure:"max_idle_conns" yaml:"max_idle_conns"`
+	MaxLifetime  int `mapstructure:"max_lifetime" yaml:"max_lifetime"`
+}
+
+type RedisConfig struct {
+	Addr     string `mapstructure:"addr" yaml:"addr"`
+	Password string `mapstructure:"password" yaml:"password"`
+	DB       int    `mapstructure:"db" yaml:"db"`
+}
+
+type EtcdConfig struct {
+	Endpoints []string `mapstructure:"endpoints" yaml:"endpoints"`
+}
+
+type ConsulConfig struct {
+	Address string `mapstructure:"address" yaml:"address"`
+}
+
+type RegistryConfig struct {
+	Name        string                    `mapstructure:"name" yaml:"name"`
+	Address     string                    `mapstructure:"address" yaml:"address"`
+	Port        int                       `mapstructure:"port" yaml:"port"`
+	HealthCheck RegistryHealthCheckConfig `mapstructure:"health_check" yaml:"health_check"`
+}
+
+type RegistryHealthCheckConfig struct {
+	Interval string `mapstructure:"interval" yaml:"interval"`
+	Timeout  string `mapstructure:"timeout" yaml:"timeout"`
+}
+
+type SMTPConfig struct {
+	Host     string `mapstructure:"host" yaml:"host"`
+	Port     int    `mapstructure:"port" yaml:"port"`
+	Username string `mapstructure:"username" yaml:"username"`
+	Password string `mapstructure:"password" yaml:"password"`
+}
+
+type JWTConfig struct {
+	AccessSecret  string `mapstructure:"access_secret" yaml:"access_secret"`
+	AccessExpire  int    `mapstructure:"access_expire" yaml:"access_expire"`
+	RefreshExpire int    `mapstructure:"refresh_expire" yaml:"refresh_expire"`
+}
+
+type AdminConfig struct {
+	UserIDs []int `mapstructure:"user_ids" yaml:"user_ids"`
+}

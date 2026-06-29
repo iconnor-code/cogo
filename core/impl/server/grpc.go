@@ -58,10 +58,7 @@ func NewGrpcServer(config core.IConfig, logger core.ILogger, bs *grpc.Server, op
 	for _, opt := range opts {
 		opt(s)
 	}
-	listen, err := core.GetString(s.conf, "grpc.listen")
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
+	listen := s.conf.GetGRPC().Listen
 	listener, err := net.Listen("tcp", listen)
 	if err != nil {
 		return nil, cerrs.Wrap(err)
@@ -81,17 +78,20 @@ func NewGrpcServiceServer(config core.IConfig, logger core.ILogger, opt GrpcServ
 		return nil, err
 	}
 
-	reg, err := newConsulRegistry(config, logger)
-	if err != nil {
-		return nil, err
+	opts := make([]core.ServerOption, 0, 1)
+	if registryEnabled(config) {
+		reg, err := newConsulRegistry(config, logger)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, WithGrpcRegistry(reg))
 	}
-	return NewGrpcServer(config, logger, baseServer, WithGrpcRegistry(reg))
+	return NewGrpcServer(config, logger, baseServer, opts...)
 }
 
 func (s *GrpcServer) Start() error {
 	go func() {
-		listen, _ := core.GetString(s.conf, "grpc.listen")
-		s.logger.Info("grpc server start", zap.String("listen", listen))
+		s.logger.Info("grpc server start", zap.String("listen", s.conf.GetGRPC().Listen))
 		err := s.baseServer.Serve(s.listener)
 		if err != nil {
 			s.logger.Error("grpc server failed", zap.Error(err))
@@ -142,14 +142,9 @@ func NewGrpcServerGroup[T core.IServer](
 
 	group := NewServerGroup()
 	group.AddServer("grpc", grpcServer)
-	if metricsEnabled(config) {
-		metricsServer, err := NewMetricsServer(config, logger)
-		if err != nil {
-			return nil, fmt.Errorf("init grpc metrics server: %w", err)
-		}
-		group.AddServer("metrics", metricsServer)
+	if err := addMetricsServer(config, logger, group); err != nil {
+		return nil, err
 	}
-
 	return group, nil
 }
 
@@ -208,11 +203,7 @@ func registerHealthServer(baseServer *grpc.Server, config core.IConfig) error {
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(baseServer, healthServer)
 
-	registryName, err := core.GetString(config, "registry.name")
-	if err != nil {
-		return err
-	}
-	healthServer.SetServingStatus(registryName, grpc_health_v1.HealthCheckResponse_SERVING)
+	healthServer.SetServingStatus(config.GetRegistry().Name, grpc_health_v1.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	return nil
 }
@@ -225,10 +216,26 @@ func newConsulRegistry(config core.IConfig, logger core.ILogger) (core.IRegistry
 	return registry.NewRegistry(config, logger, registry.WithConsulClient(consul))
 }
 
+func registryEnabled(config core.IConfig) bool {
+	registryConf := config.GetRegistry()
+	return config.GetConsul().Address != "" &&
+		registryConf.Name != "" &&
+		registryConf.Address != "" &&
+		registryConf.Port != 0
+}
+
 func metricsEnabled(config core.IConfig) bool {
-	enabled, ok := lookupConfig(config, "metrics.enable").(bool)
-	if ok {
-		return enabled
+	return config.GetMetrics().Enable
+}
+
+func addMetricsServer(config core.IConfig, logger core.ILogger, group *ServerGroup) error {
+	if !metricsEnabled(config) {
+		return nil
 	}
-	return config.Get("metrics") != nil
+	metricsServer, err := NewMetricsServer(config, logger)
+	if err != nil {
+		return fmt.Errorf("init metrics server: %w", err)
+	}
+	group.AddServer("metrics", metricsServer)
+	return nil
 }

@@ -26,10 +26,8 @@ func NewMysqlDB(config core.IConfig, logger core.ILogger) (*MysqlDB, error) {
 
 	gormLogger := NewGormZapLogger(mysqlDB.logger)
 
-	dsn, err := core.GetString(mysqlDB.conf, "mysql.dsn")
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
+	mysqlConf := mysqlDB.conf.GetMySQL()
+	dsn := mysqlConf.DSN
 
 	db, err := gorm.Open(mysql.New(mysql.Config{
 		DSN:                       dsn,
@@ -50,18 +48,9 @@ func NewMysqlDB(config core.IConfig, logger core.ILogger) (*MysqlDB, error) {
 		return nil, cerrs.Wrap(err)
 	}
 
-	maxOpenConns, err := core.GetInt(mysqlDB.conf, "mysql.pool.max_open_conns")
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
-	maxIdleConns, err := core.GetInt(mysqlDB.conf, "mysql.pool.max_idle_conns")
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
-	maxLifetime, err := core.GetInt(mysqlDB.conf, "mysql.pool.max_lifetime")
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
+	maxOpenConns := mysqlConf.Pool.MaxOpenConns
+	maxIdleConns := mysqlConf.Pool.MaxIdleConns
+	maxLifetime := mysqlConf.Pool.MaxLifetime
 	sqlDB.SetMaxOpenConns(maxOpenConns)
 	sqlDB.SetMaxIdleConns(maxIdleConns)
 	sqlDB.SetConnMaxLifetime(time.Duration(maxLifetime) * time.Second)

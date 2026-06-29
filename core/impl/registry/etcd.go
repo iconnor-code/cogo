@@ -19,15 +19,11 @@ type KitEtcdRetistry struct {
 }
 
 func (r *Registry) etcdRegistryKey() (string, error) {
-	name, err := core.GetString(r.config, "registry.name")
-	if err != nil {
-		return "", cerrs.Wrap(err)
-	}
 	instanceID, err := r.getInstanceID()
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("/services/%s/%s", name, instanceID), nil
+	return fmt.Sprintf("/services/%s/%s", r.config.GetRegistry().Name, instanceID), nil
 }
 
 func WithEtcdClient(etcd *client.EtcdClient) core.RegistryOption {

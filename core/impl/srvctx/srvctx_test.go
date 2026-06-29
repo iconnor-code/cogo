@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/iconnor-code/cogo/core"
+	cogoconfig "github.com/iconnor-code/cogo/core/impl/config"
 )
 
 type testLogger struct{}
@@ -17,13 +18,8 @@ func (l *testLogger) Fatal(string, ...any)   {}
 func (l *testLogger) Panic(string, ...any)   {}
 func (l *testLogger) AddGlobalFields(...any) {}
 
-type testConfig struct{}
-
-func (c *testConfig) Get(string) any { return nil }
-func (c *testConfig) ReLoad() error  { return nil }
-
 func TestSrvCtxSetGetField(t *testing.T) {
-	s := NewSrvCtx(&testLogger{}, &testConfig{})
+	s := NewSrvCtx(&testLogger{}, &cogoconfig.Config{})
 	s.SetField(core.SrvCtxKey("k"), "v")
 	got, ok := s.GetField(core.SrvCtxKey("k"))
 	if !ok {
@@ -35,7 +31,7 @@ func TestSrvCtxSetGetField(t *testing.T) {
 }
 
 func TestSrvCtxBizAndUserInfo(t *testing.T) {
-	s := NewSrvCtx(&testLogger{}, &testConfig{})
+	s := NewSrvCtx(&testLogger{}, &cogoconfig.Config{})
 	b := &BizInfo{BizID: 1, BizName: "biz"}
 	u := &UserInfo{UserID: 2, UserEmail: "u@test", IsAdmin: true}
 

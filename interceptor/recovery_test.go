@@ -6,6 +6,7 @@ import (
 
 	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
+	cogoconfig "github.com/iconnor-code/cogo/core/impl/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -22,14 +23,9 @@ func (l *testLogger) Fatal(string, ...any)   {}
 func (l *testLogger) Panic(string, ...any)   {}
 func (l *testLogger) AddGlobalFields(...any) {}
 
-type testConfig struct{}
-
-func (c *testConfig) Get(string) any { return nil }
-func (c *testConfig) ReLoad() error  { return nil }
-
 type testSrvCtx struct {
 	logger core.ILogger
-	config core.IConfig
+	config *cogoconfig.Config
 }
 
 func (s *testSrvCtx) Logger() core.ILogger                { return s.logger }
@@ -45,7 +41,7 @@ func TestRecoveryInterceptorRecoverPanic(t *testing.T) {
 	itc := RecoveryInterceptor()
 	ctx := context.WithValue(context.Background(), core.SrvCtx, &testSrvCtx{
 		logger: &testLogger{},
-		config: &testConfig{},
+		config: &cogoconfig.Config{},
 	})
 
 	info := &grpc.UnaryServerInfo{FullMethod: "/svc/method"}
