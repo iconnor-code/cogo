@@ -30,7 +30,7 @@ func (r *Registry) consulRegister() error {
 		Name:    name,
 		Address: address, Port: port,
 		Check: &consul.AgentServiceCheck{
-			GRPC:     fmt.Sprintf("%s:%d", address, port),
+			GRPC:     fmt.Sprintf("%s:%d/%s", address, port, name),
 			Interval: r.config.GetRegistry().HealthCheck.Interval,
 			Timeout:  r.config.GetRegistry().HealthCheck.Timeout,
 			Status:   consul.HealthPassing,

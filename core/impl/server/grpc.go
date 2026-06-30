@@ -36,9 +36,10 @@ type GrpcServer struct {
 }
 
 type GrpcServiceOption struct {
-	PublicMethods     []string
-	UnaryInterceptors []grpc.UnaryServerInterceptor
-	RegisterServices  func(*grpc.Server) error
+	PublicMethods          []string
+	TokenRevocationChecker cogointerceptor.TokenRevocationChecker
+	UnaryInterceptors      []grpc.UnaryServerInterceptor
+	RegisterServices       func(*grpc.Server) error
 }
 
 func WithGrpcRegistry(registry core.IRegistry) core.ServerOption {
@@ -187,7 +188,10 @@ func unaryInterceptors(config core.IConfig, logger core.ILogger, opt GrpcService
 		cogointerceptor.CycleCheckInterceptor(),
 		cogointerceptor.RequestLogInterceptor(),
 		cogointerceptor.BizInfoInterceptor(),
-		cogointerceptor.UserInfoInterceptor(publicMethodsWithHealth(opt.PublicMethods)...),
+		cogointerceptor.UserInfoInterceptorWithOptions(
+			publicMethodsWithHealth(opt.PublicMethods),
+			cogointerceptor.WithTokenRevocationChecker(opt.TokenRevocationChecker),
+		),
 	}
 	return append(interceptors, opt.UnaryInterceptors...)
 }

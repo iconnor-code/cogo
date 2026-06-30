@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/iconnor-code/cogo/core"
@@ -68,6 +69,8 @@ func TestUserInfoInterceptorSuccess(t *testing.T) {
 		"user_id":    float64(123),
 		"user_email": "u@test.com",
 		"is_admin":   true,
+		"exp":        time.Now().Add(time.Hour).Unix(),
+		"jti":        "token-1",
 	})
 
 	md := metadata.Pairs("access_token", token)
@@ -116,7 +119,106 @@ func TestUserInfoInterceptorInvalidToken(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected grpc status error")
 	}
-	if st.Code() != codes.InvalidArgument {
-		t.Fatalf("expected InvalidArgument, got %v", st.Code())
+	if st.Code() != codes.Unauthenticated {
+		t.Fatalf("expected Unauthenticated, got %v", st.Code())
 	}
+}
+
+func TestUserInfoInterceptorExpiredToken(t *testing.T) {
+	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
+	sctx := srvctx.NewSrvCtx(&testLogger{}, conf)
+	token := makeAccessToken("secret", jwt.MapClaims{
+		"user_id":    float64(123),
+		"user_email": "u@test.com",
+		"exp":        time.Now().Add(-time.Hour).Unix(),
+		"jti":        "token-1",
+	})
+	md := metadata.Pairs("access_token", token)
+	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
+
+	itc := UserInfoInterceptor()
+	info := &grpc.UnaryServerInfo{FullMethod: "/svc/m"}
+	_, err := itc(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
+		return "ok", nil
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected grpc status error")
+	}
+	if st.Code() != codes.Unauthenticated {
+		t.Fatalf("expected Unauthenticated, got %v", st.Code())
+	}
+}
+
+func TestUserInfoInterceptorRevokedToken(t *testing.T) {
+	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
+	sctx := srvctx.NewSrvCtx(&testLogger{}, conf)
+	token := makeAccessToken("secret", jwt.MapClaims{
+		"user_id":    float64(123),
+		"user_email": "u@test.com",
+		"exp":        time.Now().Add(time.Hour).Unix(),
+		"jti":        "token-1",
+	})
+	md := metadata.Pairs("access_token", token)
+	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
+
+	itc := UserInfoInterceptorWithOptions(nil, WithTokenRevocationChecker(fakeRevocationChecker{revoked: true}))
+	info := &grpc.UnaryServerInfo{FullMethod: "/svc/m"}
+	_, err := itc(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
+		return "ok", nil
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected grpc status error")
+	}
+	if st.Code() != codes.Unauthenticated {
+		t.Fatalf("expected Unauthenticated, got %v", st.Code())
+	}
+}
+
+func TestUserInfoInterceptorRevocationCheckFailure(t *testing.T) {
+	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
+	sctx := srvctx.NewSrvCtx(&testLogger{}, conf)
+	token := makeAccessToken("secret", jwt.MapClaims{
+		"user_id":    float64(123),
+		"user_email": "u@test.com",
+		"exp":        time.Now().Add(time.Hour).Unix(),
+		"jti":        "token-1",
+	})
+	md := metadata.Pairs("access_token", token)
+	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
+
+	itc := UserInfoInterceptorWithOptions(nil, WithTokenRevocationChecker(fakeRevocationChecker{err: errors.New("redis unavailable")}))
+	info := &grpc.UnaryServerInfo{FullMethod: "/svc/m"}
+	_, err := itc(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
+		return "ok", nil
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected grpc status error")
+	}
+	if st.Code() != codes.Internal {
+		t.Fatalf("expected Internal, got %v", st.Code())
+	}
+}
+
+type fakeRevocationChecker struct {
+	revoked bool
+	err     error
+}
+
+func (f fakeRevocationChecker) IsTokenRevoked(context.Context, string) (bool, error) {
+	return f.revoked, f.err
 }

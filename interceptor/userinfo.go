@@ -15,7 +15,32 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+type TokenRevocationChecker interface {
+	IsTokenRevoked(ctx context.Context, tokenID string) (bool, error)
+}
+
+type UserInfoOption func(*userInfoOptions)
+
+type userInfoOptions struct {
+	revocationChecker TokenRevocationChecker
+}
+
+func WithTokenRevocationChecker(checker TokenRevocationChecker) UserInfoOption {
+	return func(opts *userInfoOptions) {
+		opts.revocationChecker = checker
+	}
+}
+
 func UserInfoInterceptor(whiteList ...string) grpc.UnaryServerInterceptor {
+	return UserInfoInterceptorWithOptions(whiteList)
+}
+
+func UserInfoInterceptorWithOptions(whiteList []string, options ...UserInfoOption) grpc.UnaryServerInterceptor {
+	opts := userInfoOptions{}
+	for _, option := range options {
+		option(&opts)
+	}
+
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		srvCtx, ok := core.SrvCtxFromContext(ctx)
 		if !ok {
@@ -40,7 +65,20 @@ func UserInfoInterceptor(whiteList ...string) grpc.UnaryServerInterceptor {
 		jwtToken := token.NewJwtToken(srvCtx.Config())
 		userInfo, err := jwtToken.ParseToken(accessTokens[0])
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "access_token is invalid")
+			return nil, status.Errorf(codes.Unauthenticated, "access_token is invalid or expired")
+		}
+		tokenID, err := token.ClaimsString(userInfo, token.ClaimID)
+		if err != nil {
+			return nil, status.Errorf(codes.Unauthenticated, "access_token id is invalid")
+		}
+		if opts.revocationChecker != nil {
+			revoked, err := opts.revocationChecker.IsTokenRevoked(ctx, tokenID)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "check access_token revocation failed")
+			}
+			if revoked {
+				return nil, status.Errorf(codes.Unauthenticated, "access_token is revoked")
+			}
 		}
 
 		userID, err := toUint32(userInfo["user_id"])

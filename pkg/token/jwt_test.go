@@ -36,6 +36,36 @@ func TestParseTokenSuccess(t *testing.T) {
 	}
 }
 
+func TestGenerateTokenAddsTokenIDAndExpiration(t *testing.T) {
+	j := NewJwtToken(&cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{
+		AccessSecret:  "secret",
+		AccessExpire:  1,
+		RefreshExpire: 1,
+	}}})
+
+	if err := j.GenerateToken(map[string]any{"user_id": uint32(123)}); err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+	if j.AccessTokenID == "" {
+		t.Fatalf("expected access token id")
+	}
+
+	claims, err := j.ParseToken(j.AccessToken)
+	if err != nil {
+		t.Fatalf("parse generated token: %v", err)
+	}
+	tokenID, err := ClaimsString(claims, ClaimID)
+	if err != nil {
+		t.Fatalf("get token id: %v", err)
+	}
+	if tokenID != j.AccessTokenID {
+		t.Fatalf("token id mismatch: %s != %s", tokenID, j.AccessTokenID)
+	}
+	if _, err := ClaimsExpiresAt(claims); err != nil {
+		t.Fatalf("get expiration: %v", err)
+	}
+}
+
 func TestParseTokenRejectsExpiredToken(t *testing.T) {
 	j := NewJwtToken(&cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}})
 	accessToken := signToken(t, jwt.SigningMethodHS256, "secret", jwt.MapClaims{
@@ -44,6 +74,17 @@ func TestParseTokenRejectsExpiredToken(t *testing.T) {
 
 	if _, err := j.ParseToken(accessToken); err == nil {
 		t.Fatalf("expected expired token error")
+	}
+}
+
+func TestParseTokenRejectsMissingExpiration(t *testing.T) {
+	j := NewJwtToken(&cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}})
+	accessToken := signToken(t, jwt.SigningMethodHS256, "secret", jwt.MapClaims{
+		"user_id": float64(123),
+	})
+
+	if _, err := j.ParseToken(accessToken); err == nil {
+		t.Fatalf("expected missing expiration error")
 	}
 }
 
