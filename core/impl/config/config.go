@@ -95,6 +95,8 @@ func (ct *Config) GetJWT() core.JWTConfig { return ct.JWT }
 
 func (ct *Config) GetAdmin() core.AdminConfig { return ct.Admin }
 
+func (ct *Config) GetOSS() core.OSSConfig { return ct.OSS }
+
 func (ct *Config) Reload() error {
 	if ct.filepath != "" {
 		return ct.loadFromFile()

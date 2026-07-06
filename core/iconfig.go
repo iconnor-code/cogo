@@ -17,6 +17,7 @@ type IConfig interface {
 	GetSMTP() SMTPConfig
 	GetJWT() JWTConfig
 	GetAdmin() AdminConfig
+	GetOSS() OSSConfig
 	Reload() error
 }
 
@@ -37,6 +38,7 @@ type Config struct {
 	SMTP     SMTPConfig     `mapstructure:"smtp" yaml:"smtp"`
 	JWT      JWTConfig      `mapstructure:"jwt" yaml:"jwt"`
 	Admin    AdminConfig    `mapstructure:"admin" yaml:"admin"`
+	OSS      OSSConfig      `mapstructure:"oss" yaml:"oss"`
 }
 
 type GRPCConfig struct {
@@ -120,4 +122,14 @@ type JWTConfig struct {
 
 type AdminConfig struct {
 	UserIDs []int `mapstructure:"user_ids" yaml:"user_ids"`
+}
+
+type OSSConfig struct {
+	Endpoint        string `mapstructure:"endpoint" yaml:"endpoint"`
+	AccessKeyID     string `mapstructure:"access_key_id" yaml:"access_key_id"`
+	AccessKeySecret string `mapstructure:"access_key_secret" yaml:"access_key_secret"`
+	BucketName      string `mapstructure:"bucket_name" yaml:"bucket_name"`
+	BaseURL         string `mapstructure:"base_url" yaml:"base_url"`
+	UseSSL          bool   `mapstructure:"use_ssl" yaml:"use_ssl"`
+	PresignExpire   int    `mapstructure:"presign_expire" yaml:"presign_expire"`
 }

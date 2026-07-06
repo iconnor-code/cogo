@@ -78,6 +78,13 @@ jwt:
   access_secret: secret
   access_expire: 24
   refresh_expire: 7
+oss:
+  endpoint: minio.local:9001
+  access_key_id: access
+  access_key_secret: secret
+  bucket_name: mysite
+  base_url: http://minio.local:9001/mysite
+  presign_expire: 900
 `)
 	if err := os.WriteFile(configPath, content, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -99,6 +106,9 @@ jwt:
 	}
 	if conf.Registry.HealthCheck.Interval != "3s" {
 		t.Fatalf("registry health check interval = %q, want 3s", conf.Registry.HealthCheck.Interval)
+	}
+	if conf.OSS.BucketName != "mysite" {
+		t.Fatalf("oss bucket = %q, want mysite", conf.OSS.BucketName)
 	}
 }
 
