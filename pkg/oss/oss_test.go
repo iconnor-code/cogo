@@ -1,7 +1,9 @@
 package oss
 
 import (
+	"context"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -46,6 +48,54 @@ func TestPresignedPutURL(t *testing.T) {
 	}
 }
 
+func TestPresignedPutURLUsesBaseURL(t *testing.T) {
+	client, err := NewClient(&cogoconfig.Config{Config: core.Config{OSS: core.OSSConfig{
+		Endpoint:        "minio.local:9001",
+		AccessKeyID:     "access",
+		AccessKeySecret: "secret",
+		BucketName:      "mysite",
+		BaseURL:         "http://127.0.0.1:9000/mysite",
+	}}})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	signed, err := client.PresignedPutURL("avatars/user 1.png", "image/png", time.Minute)
+	if err != nil {
+		t.Fatalf("presign put: %v", err)
+	}
+	parsed, err := url.Parse(signed.URL)
+	if err != nil {
+		t.Fatalf("parse signed url: %v", err)
+	}
+	if parsed.Host != "127.0.0.1:9000" {
+		t.Fatalf("host = %q, want 127.0.0.1:9000", parsed.Host)
+	}
+	if parsed.Path != "/mysite/avatars/user 1.png" {
+		t.Fatalf("path = %q, want public bucket path", parsed.Path)
+	}
+	if parsed.Query().Get("X-Amz-Signature") == "" {
+		t.Fatalf("signature missing")
+	}
+}
+
+func TestPlaceholderCredentialsFailOnPresign(t *testing.T) {
+	client, err := NewClient(&cogoconfig.Config{Config: core.Config{OSS: core.OSSConfig{
+		Endpoint:        "minio.local:9001",
+		AccessKeyID:     "replace-me-access-key",
+		AccessKeySecret: "replace-me-secret-key",
+		BucketName:      "mysite",
+	}}})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	_, err = client.PresignedPutURL("avatars/user.png", "image/png", time.Minute)
+	if err == nil || !strings.Contains(err.Error(), "oss access key is not configured") {
+		t.Fatalf("presign error = %v, want not configured", err)
+	}
+}
+
 func TestPublicURLKeepsAbsoluteURL(t *testing.T) {
 	client := &Client{conf: core.OSSConfig{BaseURL: "http://minio.local:9001/mysite"}}
 	got := client.PublicURL("https://example.com/a.png")
@@ -72,4 +122,41 @@ func TestObjectKeyConvertsBucketURL(t *testing.T) {
 	if got != "https://example.com/a.png" {
 		t.Fatalf("external url = %q", got)
 	}
+}
+
+func TestIntegrationPutObject(t *testing.T) {
+	if os.Getenv("MYSITE_OSS_INTEGRATION") != "1" {
+		t.Skip("set MYSITE_OSS_INTEGRATION=1 to run")
+	}
+	accessKeyID := os.Getenv("MYSITE_OSS_ACCESS_KEY_ID")
+	accessKeySecret := os.Getenv("MYSITE_OSS_ACCESS_KEY_SECRET")
+	if accessKeyID == "" || accessKeySecret == "" {
+		t.Skip("set MYSITE_OSS_ACCESS_KEY_ID and MYSITE_OSS_ACCESS_KEY_SECRET to run")
+	}
+	endpoint := envDefault("MYSITE_OSS_ENDPOINT", "minio.local:9000")
+	bucketName := envDefault("MYSITE_OSS_BUCKET", "mysite")
+	baseURL := envDefault("MYSITE_OSS_BASE_URL", "http://minio.local:9000/mysite")
+
+	client, err := NewClient(&cogoconfig.Config{Config: core.Config{OSS: core.OSSConfig{
+		Endpoint:        endpoint,
+		AccessKeyID:     accessKeyID,
+		AccessKeySecret: accessKeySecret,
+		BucketName:      bucketName,
+		BaseURL:         baseURL,
+	}}})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	objectKey := NewObjectKey("codex-integration", "probe.txt")
+	if err := client.PutObjectContext(context.Background(), objectKey, "text/plain", []byte("probe")); err != nil {
+		t.Fatalf("put object %s: %v", objectKey, err)
+	}
+}
+
+func envDefault(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }

@@ -3,6 +3,7 @@ package oss
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -23,6 +24,7 @@ import (
 const (
 	defaultPresignExpire = 15 * time.Minute
 	emptyPayloadSHA256   = "UNSIGNED-PAYLOAD"
+	objectHTTPTimeout    = 10 * time.Second
 )
 
 type Client struct {
@@ -46,9 +48,6 @@ func NewClient(conf core.IConfig) (*Client, error) {
 	}
 	if strings.TrimSpace(ossConf.BucketName) == "" {
 		return nil, cerrs.New("oss bucket name is required")
-	}
-	if strings.TrimSpace(ossConf.AccessKeyID) == "" || strings.TrimSpace(ossConf.AccessKeySecret) == "" {
-		return nil, cerrs.New("oss access key is required")
 	}
 	return &Client{conf: ossConf}, nil
 }
@@ -104,16 +103,55 @@ func (c *Client) PresignedGetURL(objectKey string, expires time.Duration) (*Pres
 	return c.presign(http.MethodGet, objectKey, "", expires)
 }
 
+func (c *Client) PresignedHeadURL(objectKey string, expires time.Duration) (*PresignedURL, error) {
+	return c.presign(http.MethodHead, objectKey, "", expires)
+}
+
 func (c *Client) PresignedPutURL(objectKey, contentType string, expires time.Duration) (*PresignedURL, error) {
 	return c.presign(http.MethodPut, objectKey, contentType, expires)
 }
 
+func (c *Client) ObjectExists(objectKey string) (bool, error) {
+	return c.ObjectExistsContext(context.Background(), objectKey)
+}
+
+func (c *Client) ObjectExistsContext(ctx context.Context, objectKey string) (bool, error) {
+	signed, err := c.PresignedHeadURL(objectKey, 0)
+	if err != nil {
+		return false, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, signed.URL, nil)
+	if err != nil {
+		return false, cerrs.Wrap(err, "oss create head object request failed")
+	}
+	resp, err := objectHTTPClient.Do(req)
+	if err != nil {
+		return false, cerrs.Wrap(err, "oss head object failed")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return false, cerrs.New("oss head object returned status " + resp.Status)
+	}
+	return true, nil
+}
+
 func (c *Client) GetObject(objectKey string) ([]byte, string, error) {
+	return c.GetObjectContext(context.Background(), objectKey)
+}
+
+func (c *Client) GetObjectContext(ctx context.Context, objectKey string) ([]byte, string, error) {
 	signed, err := c.PresignedGetURL(objectKey, 0)
 	if err != nil {
 		return nil, "", err
 	}
-	resp, err := http.Get(signed.URL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, signed.URL, nil)
+	if err != nil {
+		return nil, "", cerrs.Wrap(err, "oss create get object request failed")
+	}
+	resp, err := objectHTTPClient.Do(req)
 	if err != nil {
 		return nil, "", cerrs.Wrap(err, "oss get object failed")
 	}
@@ -129,29 +167,46 @@ func (c *Client) GetObject(objectKey string) ([]byte, string, error) {
 }
 
 func (c *Client) PutObject(objectKey, contentType string, data []byte) error {
+	return c.PutObjectContext(context.Background(), objectKey, contentType, data)
+}
+
+func (c *Client) PutObjectContext(ctx context.Context, objectKey, contentType string, data []byte) error {
 	signed, err := c.PresignedPutURL(objectKey, contentType, 0)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(http.MethodPut, signed.URL, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, signed.URL, bytes.NewReader(data))
 	if err != nil {
 		return cerrs.Wrap(err, "oss create put object request failed")
 	}
 	if strings.TrimSpace(contentType) != "" {
 		req.Header.Set("Content-Type", strings.TrimSpace(contentType))
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := objectHTTPClient.Do(req)
 	if err != nil {
 		return cerrs.Wrap(err, "oss put object failed")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return cerrs.New("oss put object returned status " + resp.Status)
+		return cerrs.New("oss put object returned status " + resp.Status + ": " + responseBodyString(resp.Body))
 	}
 	return nil
 }
 
+var objectHTTPClient = &http.Client{Timeout: objectHTTPTimeout}
+
+func responseBodyString(body io.Reader) string {
+	data, err := io.ReadAll(io.LimitReader(body, 4096))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
 func (c *Client) presign(method, objectKey, contentType string, expires time.Duration) (*PresignedURL, error) {
+	if err := c.validateCredentials(); err != nil {
+		return nil, err
+	}
 	key := NormalizeObjectKey(objectKey)
 	if key == "" {
 		return nil, cerrs.New("oss object key is required")
@@ -167,8 +222,7 @@ func (c *Client) presign(method, objectKey, contentType string, expires time.Dur
 
 	now := time.Now().UTC()
 	expires = c.expireDuration(expires)
-	endpoint := c.endpointURL()
-	endpoint.Path = "/" + path.Join(c.conf.BucketName, key)
+	endpoint := c.presignURL(key)
 	endpoint.RawQuery = ""
 
 	credentialDate := now.Format("20060102")
@@ -188,7 +242,7 @@ func (c *Client) presign(method, objectKey, contentType string, expires time.Dur
 	}
 	query.Set("X-Amz-SignedHeaders", signedHeaders)
 
-	canonicalURI := "/" + path.Join(c.conf.BucketName, pathEscape(key))
+	canonicalURI := "/" + pathEscape(strings.TrimPrefix(endpoint.Path, "/"))
 	canonicalQuery := canonicalQueryString(query)
 	canonicalRequest := strings.Join([]string{
 		method,
@@ -217,6 +271,18 @@ func (c *Client) presign(method, objectKey, contentType string, expires time.Dur
 	}, nil
 }
 
+func (c *Client) validateCredentials() error {
+	accessKeyID := strings.TrimSpace(c.conf.AccessKeyID)
+	accessKeySecret := strings.TrimSpace(c.conf.AccessKeySecret)
+	if accessKeyID == "" || accessKeySecret == "" {
+		return cerrs.New("oss access key is required")
+	}
+	if strings.HasPrefix(accessKeyID, "replace-me-") || strings.HasPrefix(accessKeySecret, "replace-me-") {
+		return cerrs.New("oss access key is not configured")
+	}
+	return nil
+}
+
 func (c *Client) expireDuration(value time.Duration) time.Duration {
 	if value > 0 {
 		return value
@@ -237,6 +303,19 @@ func (c *Client) endpointURL() url.URL {
 		return *parsed
 	}
 	return url.URL{Scheme: scheme, Host: endpoint}
+}
+
+func (c *Client) presignURL(objectKey string) url.URL {
+	baseURL := strings.TrimRight(c.conf.BaseURL, "/")
+	if baseURL != "" {
+		if parsed, err := url.Parse(baseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+			parsed.Path = path.Join(parsed.Path, objectKey)
+			return *parsed
+		}
+	}
+	endpoint := c.endpointURL()
+	endpoint.Path = "/" + path.Join(c.conf.BucketName, objectKey)
+	return endpoint
 }
 
 func NormalizeObjectKey(value string) string {

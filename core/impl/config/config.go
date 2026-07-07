@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"strings"
 
@@ -121,5 +122,23 @@ func (ct *Config) loadFromFile() error {
 	if err := ct.viper.ReadInConfig(); err != nil {
 		return cerrs.Wrap(err, fmt.Sprintf("reading config file error,filepath:%s", ct.filepath))
 	}
-	return ct.Unmarshal(ct)
+	if err := ct.Unmarshal(ct); err != nil {
+		return err
+	}
+	ct.applyEnvOverrides()
+	return nil
+}
+
+func (ct *Config) applyEnvOverrides() {
+	setStringFromEnv(&ct.OSS.Endpoint, "MYSITE_OSS_ENDPOINT")
+	setStringFromEnv(&ct.OSS.AccessKeyID, "MYSITE_OSS_ACCESS_KEY_ID")
+	setStringFromEnv(&ct.OSS.AccessKeySecret, "MYSITE_OSS_ACCESS_KEY_SECRET")
+	setStringFromEnv(&ct.OSS.BucketName, "MYSITE_OSS_BUCKET")
+	setStringFromEnv(&ct.OSS.BaseURL, "MYSITE_OSS_BASE_URL")
+}
+
+func setStringFromEnv(target *string, key string) {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		*target = value
+	}
 }

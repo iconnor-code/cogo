@@ -148,3 +148,36 @@ admin:
 		t.Fatalf("admin user ids = %+v, want [1 2]", conf.Admin.UserIDs)
 	}
 }
+
+func TestOSSConfigSupportsEnvOverrides(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "app.yaml")
+	content := []byte(`
+oss:
+  endpoint: minio.local:9000
+  access_key_id: replace-me-access-key
+  access_key_secret: replace-me-secret-key
+  bucket_name: mysite
+  base_url: http://minio.local:9000/mysite
+`)
+	if err := os.WriteFile(configPath, content, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv("MYSITE_OSS_ACCESS_KEY_ID", "access")
+	t.Setenv("MYSITE_OSS_ACCESS_KEY_SECRET", "secret")
+	t.Setenv("MYSITE_OSS_BASE_URL", "http://example.com/mysite")
+
+	conf, err := NewConfig(WithFilePath(configPath))
+	if err != nil {
+		t.Fatalf("new config: %v", err)
+	}
+	if conf.OSS.AccessKeyID != "access" {
+		t.Fatalf("oss access key id = %q, want access", conf.OSS.AccessKeyID)
+	}
+	if conf.OSS.AccessKeySecret != "secret" {
+		t.Fatalf("oss access key secret = %q, want secret", conf.OSS.AccessKeySecret)
+	}
+	if conf.OSS.BaseURL != "http://example.com/mysite" {
+		t.Fatalf("oss base url = %q, want env override", conf.OSS.BaseURL)
+	}
+}
