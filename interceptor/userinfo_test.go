@@ -124,6 +124,21 @@ func TestUserInfoInterceptorInvalidToken(t *testing.T) {
 	}
 }
 
+func TestUserInfoInterceptorMissingToken(t *testing.T) {
+	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
+	sctx := srvctx.NewSrvCtx(&testLogger{}, conf)
+	ctx := context.WithValue(context.Background(), core.SrvCtx, sctx)
+
+	itc := UserInfoInterceptor()
+	info := &grpc.UnaryServerInfo{FullMethod: "/svc/m"}
+	_, err := itc(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
+		return "ok", nil
+	})
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("expected Unauthenticated, got %v", status.Code(err))
+	}
+}
+
 func TestUserInfoInterceptorExpiredToken(t *testing.T) {
 	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
 	sctx := srvctx.NewSrvCtx(&testLogger{}, conf)

@@ -54,12 +54,12 @@ func UserInfoInterceptorWithOptions(whiteList []string, options ...UserInfoOptio
 
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
-			return nil, status.Errorf(codes.InvalidArgument, "metadata is required")
+			return nil, status.Errorf(codes.Unauthenticated, "access_token is required")
 		}
 
 		accessTokens := md.Get("access_token")
 		if len(accessTokens) == 0 || len(accessTokens[0]) == 0 {
-			return nil, status.Errorf(codes.InvalidArgument, "access_token is required")
+			return nil, status.Errorf(codes.Unauthenticated, "access_token is required")
 		}
 
 		jwtToken := token.NewJwtToken(srvCtx.Config())

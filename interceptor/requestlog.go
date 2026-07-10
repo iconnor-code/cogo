@@ -2,6 +2,7 @@ package interceptor
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/iconnor-code/cogo/cerrs"
@@ -65,9 +66,9 @@ func RequestLogInterceptor() grpc.UnaryServerInterceptor {
 					zap.Any("response", resp),
 					zap.Error(customErr),
 				)
-				return nil, cerrs.NewWithCode(cerrs.UnknownErrCode, "internal error occurred")
+				return nil, status.Error(codes.Internal, "internal error occurred")
 			}
-			return nil, customErr
+			return nil, status.Error(grpcCodeForCustomError(customErr.GetCode()), customErrorMessage(customErr))
 		}
 
 		logger.Error("internal error",
@@ -76,6 +77,30 @@ func RequestLogInterceptor() grpc.UnaryServerInterceptor {
 			zap.Any("response", resp),
 			zap.Error(err),
 		)
-		return nil, cerrs.NewWithCode(cerrs.UnknownErrCode, "internal error occurred")
+		return nil, status.Error(codes.Internal, "internal error occurred")
 	}
+}
+
+func grpcCodeForCustomError(code cerrs.CerrCode) codes.Code {
+	switch code {
+	case 4030:
+		return codes.PermissionDenied
+	default:
+		return codes.InvalidArgument
+	}
+}
+
+func customErrorMessage(err *cerrs.CError) string {
+	message := err.Error()
+	if cause := err.Unwrap(); cause != nil {
+		message = cause.Error()
+	}
+	if index := strings.LastIndex(message, ":"); index >= 0 {
+		message = message[index+1:]
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return "invalid request"
+	}
+	return message
 }
