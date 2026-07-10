@@ -9,7 +9,13 @@
   - 其他拦截器依赖它提供的 logger/config。
 
 - `RecoveryInterceptor()`
-  - 捕获 panic，记录日志，并返回统一内部错误（`UnknownErrCode`）。
+  - 捕获 panic，只记录方法、panic 和堆栈，不记录请求或响应载荷。
+  - 返回内部错误，由外层 `ErrorInterceptor` 转换为安全的 gRPC `Internal`。
+
+- `ErrorInterceptor()`
+  - 将 `cerrs.CError` 的 transport-neutral `Kind` 映射为稳定的 gRPC code。
+  - 只向客户端返回 `PublicMessage`；内部 cause 和调用位置不会进入响应。
+  - 未分类错误统一返回 `Internal: internal error occurred`。
 
 - `CycleCheckInterceptor()`
   - 读取 `metadata[caller_methods]` 检查循环调用。
@@ -27,26 +33,42 @@
   - `whiteList` 中的方法跳过鉴权。
 
 - `RequestLogInterceptor()`
-  - 记录请求耗时。
+  - 只记录方法、耗时和最终 gRPC code，不记录 request、response 或 context。
   - 对健康检查方法 `grpc.health.v1.Health/Check` 做了日志过滤。
-  - 对标准 gRPC status 错误保持透传，对内部错误进行统一包装返回。
+  - 取消请求记为 `Info`，预期业务失败记为 `Warn`，服务端失败记为 `Error`。
 
 ## 建议顺序
 
 推荐链路：
 
 1. `SrvCtxInterceptor`
-2. `RecoveryInterceptor`
-3. `CycleCheckInterceptor`
-4. `BizInfoInterceptor`
-5. `UserInfoInterceptor`
-6. `RequestLogInterceptor`
+2. `RequestLogInterceptor`
+3. `ErrorInterceptor`
+4. `RecoveryInterceptor`
+5. `CycleCheckInterceptor`
+6. `BizInfoInterceptor`
+7. `UserInfoInterceptor`
 
 说明：
 
 - `SrvCtxInterceptor` 应放最前，否则后续拦截器读取 `core.SrvCtx` 会失败。
-- `RecoveryInterceptor` 早放，尽快兜底 panic。
-- `RequestLogInterceptor` 放后面，便于拿到尽量完整的执行信息。
+- `RequestLogInterceptor` 位于错误边界外层，按最终 gRPC code 记录结果。
+- `ErrorInterceptor` 位于 `RecoveryInterceptor` 外层，确保 panic 恢复结果也经过安全错误映射。
+- 业务 handler 返回有明确 `Kind` 的错误，不在 handler 中解析错误字符串。
+
+## 错误分类
+
+业务和应用代码使用 `cerrs` 的语义构造函数：
+
+- `InvalidArgument` → `InvalidArgument`
+- `Unauthenticated` → `Unauthenticated`
+- `PermissionDenied` → `PermissionDenied`
+- `NotFound` → `NotFound`
+- `AlreadyExists` → `AlreadyExists`
+- `FailedPrecondition` → `FailedPrecondition`
+- `Unavailable` → `Unavailable`
+
+`cerrs.New` 和 `cerrs.Wrap` 表示内部错误。数据库、Redis、服务发现等 cause 可以保留用于服务端日志，但不会作为公开消息返回。
 
 ## Metadata 约定
 
@@ -130,6 +152,6 @@ server.NewGrpcServiceServer(config, logger, server.GrpcServiceOption{
 
 ### 错误语义
 
-- 缺少 metadata 或 `access_token`：返回 `InvalidArgument`。
+- 缺少 `access_token`：返回 `Unauthenticated`。
 - JWT 非法、过期、缺少 `jti` 或已撤销：返回 `Unauthenticated`。
 - 撤销检查器自身失败，例如 Redis 不可用：返回 `Internal`。

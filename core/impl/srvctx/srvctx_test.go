@@ -1,6 +1,7 @@
 package srvctx
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/iconnor-code/cogo/core"
@@ -28,6 +29,25 @@ func TestSrvCtxSetGetField(t *testing.T) {
 	if got != "v" {
 		t.Fatalf("expected value v, got %v", got)
 	}
+}
+
+func TestSrvCtxSupportsConcurrentAccess(t *testing.T) {
+	s := NewSrvCtx(&testLogger{}, &cogoconfig.Config{})
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(2)
+		go func(value int) {
+			defer wg.Done()
+			s.SetField(core.SrvCtxKey("shared"), value)
+			s.SetBizInfo(&BizInfo{BizID: int32(value)})
+		}(i)
+		go func() {
+			defer wg.Done()
+			_, _ = s.GetField(core.SrvCtxKey("shared"))
+			_ = s.GetBizInfo()
+		}()
+	}
+	wg.Wait()
 }
 
 func TestSrvCtxBizAndUserInfo(t *testing.T) {

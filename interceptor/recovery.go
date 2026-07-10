@@ -25,12 +25,10 @@ func RecoveryInterceptor() grpc.UnaryServerInterceptor {
 			if r := recover(); r != nil {
 				logger.Error("panic error",
 					zap.String("method", info.FullMethod),
-					zap.Any("request", req),
-					zap.Any("response", res),
 					zap.Any("error", r),
 					zap.StackSkip("stack", 1),
 				)
-				err = cerrs.WrapWithCode(fmt.Errorf("%v", r), cerrs.UnknownErrCode, "internal error occurred")
+				err = cerrs.Wrap(fmt.Errorf("%v", r), "panic recovered")
 				res = nil
 			}
 		}()

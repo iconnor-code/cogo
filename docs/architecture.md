@@ -11,7 +11,7 @@
 - `core/IServer`：服务生命周期（`Start` / `Stop`）
 - `core/IRegistry`：服务注册与反注册
 - `core/IDiscovery`：服务发现
-- `core/ISrvCtx`：请求级上下文（logger/config/biz/user/扩展字段）
+- `core/ISrvCtx`：并发安全的请求级上下文（logger/config/biz/user/扩展字段）
 
 ## 实现分层
 
@@ -29,9 +29,10 @@
 
 1. 请求进入 gRPC 服务。
 2. `SrvCtxInterceptor` 注入 `ISrvCtx`。
-3. 其他拦截器读取/补充上下文（鉴权、业务信息、日志、循环检查）。
-4. 业务 Handler 执行。
-5. `RequestLogInterceptor` 记录结果与耗时，`RecoveryInterceptor` 兜底 panic。
+3. `RequestLogInterceptor` 在最外层观察最终状态。
+4. `ErrorInterceptor` 统一错误边界，`RecoveryInterceptor` 兜底 panic。
+5. 循环检查、业务信息和用户身份拦截器补充上下文。
+6. 业务 Handler 执行并返回具有明确 Kind 的应用错误。
 
 ## 设计特点
 

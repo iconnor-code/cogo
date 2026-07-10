@@ -1,6 +1,8 @@
 package srvctx
 
 import (
+	"sync"
+
 	"github.com/iconnor-code/cogo/core"
 )
 
@@ -47,6 +49,7 @@ func (u *UserInfo) GetIsAdmin() bool {
 }
 
 type SrvCtx struct {
+	mu       sync.RWMutex
 	logger   core.ILogger
 	config   core.IConfig
 	bizInfo  core.IBizInfo
@@ -71,26 +74,38 @@ func (s *SrvCtx) Config() core.IConfig {
 }
 
 func (s *SrvCtx) SetField(key core.SrvCtxKey, value any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.ext[key] = value
 }
 
 func (s *SrvCtx) GetField(key core.SrvCtxKey) (any, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	res, ok := s.ext[key]
 	return res, ok
 }
 
 func (s *SrvCtx) SetBizInfo(bizInfo core.IBizInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.bizInfo = bizInfo
 }
 
 func (s *SrvCtx) GetBizInfo() core.IBizInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.bizInfo
 }
 
 func (s *SrvCtx) SetUserInfo(userInfo core.IUserInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.userInfo = userInfo
 }
 
 func (s *SrvCtx) GetUserInfo() core.IUserInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.userInfo
 }

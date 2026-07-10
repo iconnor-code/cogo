@@ -24,8 +24,10 @@ func (l *testLogger) Panic(string, ...any)   {}
 func (l *testLogger) AddGlobalFields(...any) {}
 
 type testRegistry struct {
-	registered   bool
-	deregistered bool
+	registered    bool
+	deregistered  bool
+	err           error
+	deregisterErr error
 }
 
 type testServer struct {
@@ -49,12 +51,50 @@ func (s *testServer) Stop() error {
 
 func (r *testRegistry) Register(context.Context) error {
 	r.registered = true
-	return nil
+	return r.err
+}
+
+func TestGrpcServerStartClosesListenerWhenRegistrationFails(t *testing.T) {
+	registry := &testRegistry{err: errors.New("register failed")}
+	listener := bufconn.Listen(1024)
+	s := &GrpcServer{
+		conf:       &cogoconfig.Config{Config: core.Config{GRPC: core.GRPCConfig{Listen: "bufconn"}}},
+		logger:     &testLogger{},
+		listener:   listener,
+		registry:   registry,
+		baseServer: grpc.NewServer(),
+	}
+
+	if err := s.Start(); err == nil {
+		t.Fatal("expected registration error")
+	}
+	if _, err := listener.Accept(); err == nil {
+		t.Fatal("expected listener to be closed")
+	}
 }
 
 func (r *testRegistry) DeRegister(context.Context) error {
 	r.deregistered = true
-	return nil
+	return r.deregisterErr
+}
+
+func TestGrpcServerStopStillStopsWhenDeregisterFails(t *testing.T) {
+	listener := bufconn.Listen(1024)
+	s := &GrpcServer{
+		conf:       &cogoconfig.Config{Config: core.Config{GRPC: core.GRPCConfig{Listen: "bufconn"}}},
+		logger:     &testLogger{},
+		listener:   listener,
+		registry:   &testRegistry{deregisterErr: errors.New("deregister failed")},
+		baseServer: grpc.NewServer(),
+	}
+	go func() { _ = s.baseServer.Serve(listener) }()
+
+	if err := s.Stop(); err == nil {
+		t.Fatal("expected deregistration error")
+	}
+	if _, err := listener.Accept(); err == nil {
+		t.Fatal("expected listener to be closed despite deregistration error")
+	}
 }
 
 func TestHTTPServerStartReturnsListenError(t *testing.T) {

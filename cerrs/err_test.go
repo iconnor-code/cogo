@@ -16,6 +16,20 @@ func TestNewWithCode(t *testing.T) {
 	}
 }
 
+func TestKindConstructorsSeparatePublicMessageAndCause(t *testing.T) {
+	err := WrapKind(errors.New("database password"), KindNotFound, "user not found")
+	var cerr *CError
+	if !errors.As(err, &cerr) {
+		t.Fatalf("expected CError, got %T", err)
+	}
+	if cerr.Kind() != KindNotFound || cerr.PublicMessage() != "user not found" {
+		t.Fatalf("unexpected public contract: kind=%v message=%q", cerr.Kind(), cerr.PublicMessage())
+	}
+	if !errors.Is(err, cerr.Unwrap()) {
+		t.Fatal("expected internal cause to remain available")
+	}
+}
+
 func TestWrapUnwrapIsAs(t *testing.T) {
 	base := errors.New("base")
 	wrapped := WrapWithCode(base, UnknownErrCode, "wrapped")

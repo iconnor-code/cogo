@@ -94,13 +94,15 @@ func (s *GrpcServer) Start() error {
 	go func() {
 		s.logger.Info("grpc server start", zap.String("listen", s.conf.GetGRPC().Listen))
 		err := s.baseServer.Serve(s.listener)
-		if err != nil {
+		if err != nil && !errors.Is(err, grpc.ErrServerStopped) && !errors.Is(err, net.ErrClosed) {
 			s.logger.Error("grpc server failed", zap.Error(err))
 		}
 	}()
 
 	if s.registry != nil {
 		if err := s.registry.Register(context.Background()); err != nil {
+			s.baseServer.Stop()
+			_ = s.listener.Close()
 			return cerrs.Wrap(err)
 		}
 	}
@@ -109,14 +111,14 @@ func (s *GrpcServer) Start() error {
 }
 
 func (s *GrpcServer) Stop() error {
+	var errs error
 	if s.registry != nil {
 		if err := s.registry.DeRegister(context.Background()); err != nil {
-			return err
+			errs = errors.Join(errs, err)
 		}
 	}
 	s.baseServer.GracefulStop()
-
-	return nil
+	return errs
 }
 
 func NewServerGroup(servers ...core.IServer) *ServerGroup {
@@ -184,9 +186,10 @@ func publicMethodsWithHealth(methods []string) []string {
 func unaryInterceptors(config core.IConfig, logger core.ILogger, opt GrpcServiceOption) []grpc.UnaryServerInterceptor {
 	interceptors := []grpc.UnaryServerInterceptor{
 		cogointerceptor.SrvCtxInterceptor(config, logger),
+		cogointerceptor.RequestLogInterceptor(),
+		cogointerceptor.ErrorInterceptor(),
 		cogointerceptor.RecoveryInterceptor(),
 		cogointerceptor.CycleCheckInterceptor(),
-		cogointerceptor.RequestLogInterceptor(),
 		cogointerceptor.BizInfoInterceptor(),
 		cogointerceptor.UserInfoInterceptorWithOptions(
 			publicMethodsWithHealth(opt.PublicMethods),
