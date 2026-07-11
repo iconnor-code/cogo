@@ -9,7 +9,6 @@ import (
 
 	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
-	cogoconfig "github.com/iconnor-code/cogo/core/impl/config"
 	"github.com/iconnor-code/cogo/core/impl/srvctx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -72,7 +71,7 @@ func TestErrorInterceptorHidesUnknownError(t *testing.T) {
 
 func TestErrorInterceptorHidesRecoveredPanic(t *testing.T) {
 	logger := &captureLogger{}
-	serviceContext := srvctx.NewSrvCtx(logger, &cogoconfig.Config{})
+	serviceContext := srvctx.NewSrvCtx(logger)
 	ctx := context.WithValue(context.Background(), core.SrvCtx, serviceContext)
 	info := &grpc.UnaryServerInfo{FullMethod: "/test.Service/Panic"}
 
@@ -88,7 +87,7 @@ func TestErrorInterceptorHidesRecoveredPanic(t *testing.T) {
 
 func TestRequestLogDoesNotLogPayload(t *testing.T) {
 	logger := &captureLogger{}
-	serviceContext := srvctx.NewSrvCtx(logger, &cogoconfig.Config{})
+	serviceContext := srvctx.NewSrvCtx(logger)
 	ctx := context.WithValue(context.Background(), core.SrvCtx, serviceContext)
 	secret := "super-secret-password"
 
@@ -117,7 +116,7 @@ func TestRequestLogUsesFinalStatusSeverity(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := &captureLogger{}
-			serviceContext := srvctx.NewSrvCtx(logger, &cogoconfig.Config{})
+			serviceContext := srvctx.NewSrvCtx(logger)
 			ctx := context.WithValue(context.Background(), core.SrvCtx, serviceContext)
 			_, _ = RequestLogInterceptor()(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/test.Service/Call"}, func(context.Context, any) (any, error) {
 				return nil, tt.err

@@ -13,14 +13,17 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func BizInfoInterceptor() grpc.UnaryServerInterceptor {
+type BizInfoConfig interface {
+	GetBizID() int
+	GetBizName() string
+}
+
+func BizInfoInterceptor(config BizInfoConfig) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		srvCtx, ok := core.SrvCtxFromContext(ctx)
 		if !ok {
 			return nil, status.Errorf(codes.Internal, "srvctx is required")
 		}
-		config := srvCtx.Config()
-
 		bizInfo := &srvctx.BizInfo{}
 		bizInfo.BizID = int32(config.GetBizID())
 		bizInfo.BizName = config.GetBizName()

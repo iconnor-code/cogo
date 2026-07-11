@@ -64,7 +64,7 @@ func TestToUint32(t *testing.T) {
 
 func TestUserInfoInterceptorSuccess(t *testing.T) {
 	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
-	sctx := srvctx.NewSrvCtx(&testLogger{}, conf)
+	sctx := srvctx.NewSrvCtx(&testLogger{})
 	token := makeAccessToken("secret", jwt.MapClaims{
 		"user_id":    float64(123),
 		"user_email": "u@test.com",
@@ -77,7 +77,7 @@ func TestUserInfoInterceptorSuccess(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
 
-	itc := UserInfoInterceptor()
+	itc := UserInfoInterceptor(conf)
 	info := &grpc.UnaryServerInfo{FullMethod: "/svc/m"}
 	_, err := itc(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
 		user := sctx.GetUserInfo()
@@ -102,12 +102,12 @@ func TestUserInfoInterceptorSuccess(t *testing.T) {
 
 func TestUserInfoInterceptorInvalidToken(t *testing.T) {
 	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
-	sctx := srvctx.NewSrvCtx(&testLogger{}, conf)
+	sctx := srvctx.NewSrvCtx(&testLogger{})
 	md := metadata.Pairs("access_token", "bad-token")
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
 
-	itc := UserInfoInterceptor()
+	itc := UserInfoInterceptor(conf)
 	info := &grpc.UnaryServerInfo{FullMethod: "/svc/m"}
 	_, err := itc(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
 		return "ok", nil
@@ -126,10 +126,10 @@ func TestUserInfoInterceptorInvalidToken(t *testing.T) {
 
 func TestUserInfoInterceptorMissingToken(t *testing.T) {
 	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
-	sctx := srvctx.NewSrvCtx(&testLogger{}, conf)
+	sctx := srvctx.NewSrvCtx(&testLogger{})
 	ctx := context.WithValue(context.Background(), core.SrvCtx, sctx)
 
-	itc := UserInfoInterceptor()
+	itc := UserInfoInterceptor(conf)
 	info := &grpc.UnaryServerInfo{FullMethod: "/svc/m"}
 	_, err := itc(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
 		return "ok", nil
@@ -141,7 +141,7 @@ func TestUserInfoInterceptorMissingToken(t *testing.T) {
 
 func TestUserInfoInterceptorExpiredToken(t *testing.T) {
 	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
-	sctx := srvctx.NewSrvCtx(&testLogger{}, conf)
+	sctx := srvctx.NewSrvCtx(&testLogger{})
 	token := makeAccessToken("secret", jwt.MapClaims{
 		"user_id":    float64(123),
 		"user_email": "u@test.com",
@@ -152,7 +152,7 @@ func TestUserInfoInterceptorExpiredToken(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
 
-	itc := UserInfoInterceptor()
+	itc := UserInfoInterceptor(conf)
 	info := &grpc.UnaryServerInfo{FullMethod: "/svc/m"}
 	_, err := itc(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
 		return "ok", nil
@@ -171,7 +171,7 @@ func TestUserInfoInterceptorExpiredToken(t *testing.T) {
 
 func TestUserInfoInterceptorRevokedToken(t *testing.T) {
 	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
-	sctx := srvctx.NewSrvCtx(&testLogger{}, conf)
+	sctx := srvctx.NewSrvCtx(&testLogger{})
 	token := makeAccessToken("secret", jwt.MapClaims{
 		"user_id":    float64(123),
 		"user_email": "u@test.com",
@@ -182,7 +182,7 @@ func TestUserInfoInterceptorRevokedToken(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
 
-	itc := UserInfoInterceptorWithOptions(nil, WithTokenRevocationChecker(fakeRevocationChecker{revoked: true}))
+	itc := UserInfoInterceptorWithOptions(conf, nil, WithTokenRevocationChecker(fakeRevocationChecker{revoked: true}))
 	info := &grpc.UnaryServerInfo{FullMethod: "/svc/m"}
 	_, err := itc(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
 		return "ok", nil
@@ -201,7 +201,7 @@ func TestUserInfoInterceptorRevokedToken(t *testing.T) {
 
 func TestUserInfoInterceptorRevocationCheckFailure(t *testing.T) {
 	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
-	sctx := srvctx.NewSrvCtx(&testLogger{}, conf)
+	sctx := srvctx.NewSrvCtx(&testLogger{})
 	token := makeAccessToken("secret", jwt.MapClaims{
 		"user_id":    float64(123),
 		"user_email": "u@test.com",
@@ -212,7 +212,7 @@ func TestUserInfoInterceptorRevocationCheckFailure(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
 
-	itc := UserInfoInterceptorWithOptions(nil, WithTokenRevocationChecker(fakeRevocationChecker{err: errors.New("redis unavailable")}))
+	itc := UserInfoInterceptorWithOptions(conf, nil, WithTokenRevocationChecker(fakeRevocationChecker{err: errors.New("redis unavailable")}))
 	info := &grpc.UnaryServerInfo{FullMethod: "/svc/m"}
 	_, err := itc(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
 		return "ok", nil

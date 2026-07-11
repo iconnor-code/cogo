@@ -51,26 +51,20 @@ func (u *UserInfo) GetIsAdmin() bool {
 type SrvCtx struct {
 	mu       sync.RWMutex
 	logger   core.ILogger
-	config   core.IConfig
 	bizInfo  core.IBizInfo
 	userInfo core.IUserInfo
 	ext      map[core.SrvCtxKey]any
 }
 
-func NewSrvCtx(logger core.ILogger, config core.IConfig) *SrvCtx {
+func NewSrvCtx(logger core.ILogger) *SrvCtx {
 	return &SrvCtx{
 		logger: logger,
-		config: config,
 		ext:    make(map[core.SrvCtxKey]any),
 	}
 }
 
 func (s *SrvCtx) Logger() core.ILogger {
 	return s.logger
-}
-
-func (s *SrvCtx) Config() core.IConfig {
-	return s.config
 }
 
 func (s *SrvCtx) SetField(key core.SrvCtxKey, value any) {

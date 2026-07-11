@@ -23,7 +23,7 @@ const (
 )
 
 type JwtToken struct {
-	config            core.IConfig
+	config            Config
 	AccessToken       string
 	AccessTokenID     string
 	RefreshToken      string
@@ -31,7 +31,11 @@ type JwtToken struct {
 	RefreshExpireTime time.Time
 }
 
-func NewJwtToken(config core.IConfig) *JwtToken {
+type Config interface {
+	GetJWT() core.JWTConfig
+}
+
+func NewJwtToken(config Config) *JwtToken {
 	return &JwtToken{config: config}
 }
 

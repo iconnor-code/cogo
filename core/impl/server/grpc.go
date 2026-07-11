@@ -287,13 +287,14 @@ func publicMethodsWithHealth(methods []string) []string {
 
 func unaryInterceptors(config core.IConfig, logger core.ILogger, opt GrpcServiceOption) []grpc.UnaryServerInterceptor {
 	interceptors := []grpc.UnaryServerInterceptor{
-		cogointerceptor.SrvCtxInterceptor(config, logger),
+		cogointerceptor.SrvCtxInterceptor(logger),
 		cogointerceptor.RequestLogInterceptor(),
 		cogointerceptor.ErrorInterceptor(),
 		cogointerceptor.RecoveryInterceptor(),
 		cogointerceptor.CycleCheckInterceptor(),
-		cogointerceptor.BizInfoInterceptor(),
+		cogointerceptor.BizInfoInterceptor(config),
 		cogointerceptor.UserInfoInterceptorWithOptions(
+			config,
 			publicMethodsWithHealth(opt.PublicMethods),
 			cogointerceptor.WithTokenRevocationChecker(opt.TokenRevocationChecker),
 		),

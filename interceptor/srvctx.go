@@ -8,9 +8,9 @@ import (
 	"google.golang.org/grpc"
 )
 
-func SrvCtxInterceptor(config core.IConfig, logger core.ILogger) grpc.UnaryServerInterceptor {
+func SrvCtxInterceptor(logger core.ILogger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		srvCtx := srvctx.NewSrvCtx(logger, config)
+		srvCtx := srvctx.NewSrvCtx(logger)
 		ctx = context.WithValue(ctx, core.SrvCtx, srvCtx)
 		return handler(ctx, req)
 	}

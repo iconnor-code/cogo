@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/iconnor-code/cogo/core"
-	cogoconfig "github.com/iconnor-code/cogo/core/impl/config"
 )
 
 type testLogger struct{}
@@ -20,7 +19,7 @@ func (l *testLogger) Panic(string, ...any)   {}
 func (l *testLogger) AddGlobalFields(...any) {}
 
 func TestSrvCtxSetGetField(t *testing.T) {
-	s := NewSrvCtx(&testLogger{}, &cogoconfig.Config{})
+	s := NewSrvCtx(&testLogger{})
 	s.SetField(core.SrvCtxKey("k"), "v")
 	got, ok := s.GetField(core.SrvCtxKey("k"))
 	if !ok {
@@ -32,7 +31,7 @@ func TestSrvCtxSetGetField(t *testing.T) {
 }
 
 func TestSrvCtxSupportsConcurrentAccess(t *testing.T) {
-	s := NewSrvCtx(&testLogger{}, &cogoconfig.Config{})
+	s := NewSrvCtx(&testLogger{})
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(2)
@@ -51,7 +50,7 @@ func TestSrvCtxSupportsConcurrentAccess(t *testing.T) {
 }
 
 func TestSrvCtxBizAndUserInfo(t *testing.T) {
-	s := NewSrvCtx(&testLogger{}, &cogoconfig.Config{})
+	s := NewSrvCtx(&testLogger{})
 	b := &BizInfo{BizID: 1, BizName: "biz"}
 	u := &UserInfo{UserID: 2, UserEmail: "u@test", IsAdmin: true}
 

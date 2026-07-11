@@ -19,6 +19,10 @@ type TokenRevocationChecker interface {
 	IsTokenRevoked(ctx context.Context, tokenID string) (bool, error)
 }
 
+type UserInfoConfig interface {
+	GetJWT() core.JWTConfig
+}
+
 type UserInfoOption func(*userInfoOptions)
 
 type userInfoOptions struct {
@@ -31,11 +35,11 @@ func WithTokenRevocationChecker(checker TokenRevocationChecker) UserInfoOption {
 	}
 }
 
-func UserInfoInterceptor(whiteList ...string) grpc.UnaryServerInterceptor {
-	return UserInfoInterceptorWithOptions(whiteList)
+func UserInfoInterceptor(config UserInfoConfig, whiteList ...string) grpc.UnaryServerInterceptor {
+	return UserInfoInterceptorWithOptions(config, whiteList)
 }
 
-func UserInfoInterceptorWithOptions(whiteList []string, options ...UserInfoOption) grpc.UnaryServerInterceptor {
+func UserInfoInterceptorWithOptions(config UserInfoConfig, whiteList []string, options ...UserInfoOption) grpc.UnaryServerInterceptor {
 	opts := userInfoOptions{}
 	for _, option := range options {
 		option(&opts)
@@ -62,7 +66,7 @@ func UserInfoInterceptorWithOptions(whiteList []string, options ...UserInfoOptio
 			return nil, status.Errorf(codes.Unauthenticated, "access_token is required")
 		}
 
-		jwtToken := token.NewJwtToken(srvCtx.Config())
+		jwtToken := token.NewJwtToken(config)
 		userInfo, err := jwtToken.ParseToken(accessTokens[0])
 		if err != nil {
 			return nil, status.Errorf(codes.Unauthenticated, "access_token is invalid or expired")

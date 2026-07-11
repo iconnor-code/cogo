@@ -31,7 +31,6 @@ type IUserInfo interface {
 
 type ISrvCtx interface {
 	Logger() ILogger
-	Config() IConfig
 	SetField(key SrvCtxKey, value any)
 	GetField(key SrvCtxKey) (any, bool)
 	SetBizInfo(bizInfo IBizInfo)
