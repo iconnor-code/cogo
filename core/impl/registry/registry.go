@@ -37,6 +37,15 @@ func NewRegistry(conf core.IConfig, logger core.ILogger, opts ...Option) (*Regis
 			return nil, err
 		}
 	}
+	if registry.consulClient == nil && registry.etcdClient == nil {
+		return nil, cerrs.New("exactly one registry client is required")
+	}
+	if registry.consulClient != nil && registry.etcdClient != nil {
+		return nil, cerrs.New("consul and etcd registry clients cannot be configured together")
+	}
+	if registry.etcdClient != nil && registry.leaseTTL <= 0 {
+		return nil, cerrs.New("etcd registry lease ttl must be positive")
+	}
 	return registry, nil
 }
 

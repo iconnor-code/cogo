@@ -8,16 +8,10 @@ import (
 
 	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/client"
-	"github.com/iconnor-code/cogo/core"
 	"go.uber.org/zap"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
-
-type KitEtcdRetistry struct {
-	config      core.IConfig
-	registryKey string
-}
 
 func (r *Registry) etcdRegistryKey() (string, error) {
 	instanceID, err := r.getInstanceID()

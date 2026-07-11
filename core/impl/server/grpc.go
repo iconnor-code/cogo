@@ -244,23 +244,45 @@ func (s *ServerGroup) Run(ctx context.Context) error {
 		return err
 	}
 
-	var runErr error
+	var (
+		runErr   error
+		received int
+	)
 	select {
 	case <-ctx.Done():
 		if !errors.Is(ctx.Err(), context.Canceled) {
 			runErr = ctx.Err()
 		}
 	case result := <-s.results:
-		if result.err == nil {
-			runErr = fmt.Errorf("%s server stopped unexpectedly", result.name)
-		} else {
-			runErr = fmt.Errorf("%s server failed: %w", result.name, result.err)
-		}
+		received++
+		runErr = serverResultError(result)
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
 	defer cancel()
-	return errors.Join(runErr, s.shutdown(shutdownCtx))
+	shutdownErr := s.shutdown(shutdownCtx)
+
+	var waitErr error
+	for received < s.started {
+		select {
+		case result := <-s.results:
+			received++
+			if result.err != nil {
+				waitErr = errors.Join(waitErr, fmt.Errorf("%s server failed: %w", result.name, result.err))
+			}
+		case <-shutdownCtx.Done():
+			waitErr = errors.Join(waitErr, fmt.Errorf("wait for server shutdown: %w", shutdownCtx.Err()))
+			return errors.Join(runErr, shutdownErr, waitErr)
+		}
+	}
+	return errors.Join(runErr, shutdownErr, waitErr)
+}
+
+func serverResultError(result serverResult) error {
+	if result.err == nil {
+		return fmt.Errorf("%s server stopped unexpectedly", result.name)
+	}
+	return fmt.Errorf("%s server failed: %w", result.name, result.err)
 }
 
 func (s *ServerGroup) shutdown(ctx context.Context) error {

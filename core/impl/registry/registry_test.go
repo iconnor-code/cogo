@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/iconnor-code/cogo/client"
 	"github.com/iconnor-code/cogo/core"
 	cogoconfig "github.com/iconnor-code/cogo/core/impl/config"
 )
@@ -26,6 +27,28 @@ func TestNewDefaultDisablesRegistryWithoutConsul(t *testing.T) {
 	}
 	if got != nil {
 		t.Fatal("expected registry to be disabled")
+	}
+}
+
+func TestNewRegistryRejectsInvalidClientConfiguration(t *testing.T) {
+	config := &cogoconfig.Config{}
+	tests := []struct {
+		name    string
+		opts    []Option
+		wantErr string
+	}{
+		{name: "missing client", wantErr: "exactly one"},
+		{name: "multiple clients", opts: []Option{WithConsulClient(&client.Consul{}), WithEtcdClient(&client.EtcdClient{}), WithEtcdRegisterLeaseTTL(5)}, wantErr: "cannot be configured together"},
+		{name: "missing etcd ttl", opts: []Option{WithEtcdClient(&client.EtcdClient{})}, wantErr: "lease ttl"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewRegistry(config, &testLogger{}, tt.opts...)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected %q error, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }
 

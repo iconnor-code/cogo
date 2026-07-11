@@ -277,6 +277,18 @@ func TestServerGroupRunReturnsRuntimeFailureAndStopsPeers(t *testing.T) {
 	}
 }
 
+func TestServerGroupRunPreservesFailureWhenContextIsAlreadyCanceled(t *testing.T) {
+	failed := &testServer{waitErr: errors.New("serve failed")}
+	group := NewServerGroup(failed)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := group.Run(ctx)
+	if err == nil || !strings.Contains(err.Error(), "serve failed") {
+		t.Fatalf("expected runtime failure alongside cancellation, got %v", err)
+	}
+}
+
 func TestNewGrpcServerGroupAddsMetricsOnlyWhenEnabled(t *testing.T) {
 	config := &cogoconfig.Config{
 		Config: core.Config{Metrics: core.MetricsConfig{Enable: false, Listen: "127.0.0.1:0"}},
