@@ -107,6 +107,37 @@ func TestNewGrpcServerReturnsOptionError(t *testing.T) {
 	}
 }
 
+func TestServerConstructorsRejectMissingDependencies(t *testing.T) {
+	config := &cogoconfig.Config{}
+	logger := &testLogger{}
+
+	if _, err := NewGrpcServer(nil, logger, grpc.NewServer()); err == nil {
+		t.Fatal("expected missing grpc config error")
+	}
+	if _, err := NewGrpcServer(config, nil, grpc.NewServer()); err == nil {
+		t.Fatal("expected missing grpc logger error")
+	}
+	if _, err := NewGrpcServer(config, logger, nil); err == nil {
+		t.Fatal("expected missing base server error")
+	}
+	if _, err := NewHTTPServerWithHandler(config, logger, nil); err == nil {
+		t.Fatal("expected missing http handler error")
+	}
+	if _, err := NewMetricsServer(nil, logger); err == nil {
+		t.Fatal("expected missing metrics config error")
+	}
+
+	var grpcFactory func(core.IConfig, core.ILogger) (*testServer, error)
+	if _, err := NewGrpcServerGroup(config, logger, grpcFactory); err == nil {
+		t.Fatal("expected missing grpc factory error")
+	}
+	grpcFactory = func(core.IConfig, core.ILogger) (*testServer, error) { return &testServer{}, nil }
+	var gatewayFactory GatewayMuxFactory
+	if _, err := NewHTTPGatewayServerGroup(config, logger, grpcFactory, gatewayFactory, SwaggerOption{}); err == nil {
+		t.Fatal("expected missing gateway factory error")
+	}
+}
+
 func (r *testRegistry) DeRegister(context.Context) error {
 	r.deregistered = true
 	return r.deregisterErr
@@ -245,9 +276,9 @@ func TestGRPCEndpointFallsBackToListen(t *testing.T) {
 func TestServerGroupStopsStartedServersOnStartError(t *testing.T) {
 	first := &testServer{}
 	second := &testServer{startErr: errors.New("boom")}
-	group := NewServerGroup()
-	group.AddServer("first", first)
-	group.AddServer("second", second)
+	group := newServerGroup()
+	group.addServer("first", first)
+	group.addServer("second", second)
 
 	if err := group.start(context.Background()); err == nil {
 		t.Fatalf("expected start error")
@@ -266,7 +297,7 @@ func TestServerGroupStopsStartedServersOnStartError(t *testing.T) {
 func TestServerGroupRunReturnsRuntimeFailureAndStopsPeers(t *testing.T) {
 	failed := &testServer{waitErr: errors.New("serve failed")}
 	peer := &testServer{}
-	group := NewServerGroup(failed, peer)
+	group := newServerGroup(failed, peer)
 
 	err := group.Run(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "serve failed") {
@@ -279,7 +310,7 @@ func TestServerGroupRunReturnsRuntimeFailureAndStopsPeers(t *testing.T) {
 
 func TestServerGroupRunPreservesFailureWhenContextIsAlreadyCanceled(t *testing.T) {
 	failed := &testServer{waitErr: errors.New("serve failed")}
-	group := NewServerGroup(failed)
+	group := newServerGroup(failed)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 

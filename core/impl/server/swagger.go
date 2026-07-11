@@ -3,6 +3,7 @@ package server
 import (
 	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/swaggest/swgui/v5emb"
 )
@@ -14,6 +15,12 @@ type SwaggerOption struct {
 }
 
 func NewSwaggerHandler(apiHandler http.Handler, opt SwaggerOption) http.Handler {
+	if opt.SpecFS == nil || strings.TrimSpace(opt.SpecFile) == "" {
+		if apiHandler == nil {
+			return http.NotFoundHandler()
+		}
+		return apiHandler
+	}
 	mux := http.NewServeMux()
 	specPath := "/swagger/openapi.json"
 

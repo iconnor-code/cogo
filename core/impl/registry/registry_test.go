@@ -52,6 +52,18 @@ func TestNewRegistryRejectsInvalidClientConfiguration(t *testing.T) {
 	}
 }
 
+func TestRegistryConstructorsRejectMissingDependencies(t *testing.T) {
+	if _, err := NewRegistry(nil, &testLogger{}, WithConsulClient(&client.Consul{})); err == nil {
+		t.Fatal("expected missing registry config error")
+	}
+	if _, err := NewRegistry(&cogoconfig.Config{}, nil, WithConsulClient(&client.Consul{})); err == nil {
+		t.Fatal("expected missing registry logger error")
+	}
+	if _, err := NewDefault(nil, &testLogger{}); err == nil {
+		t.Fatal("expected missing default registry config error")
+	}
+}
+
 func TestNewDefaultRejectsIncompleteRegistryConfig(t *testing.T) {
 	tests := []struct {
 		name        string

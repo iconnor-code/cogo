@@ -64,6 +64,12 @@ func WithGrpcRegistry(registry core.IRegistry) GrpcServerOption {
 }
 
 func NewGrpcServer(config core.IConfig, logger core.ILogger, bs *grpc.Server, opts ...GrpcServerOption) (*GrpcServer, error) {
+	if err := validateServerDependencies(config, logger); err != nil {
+		return nil, err
+	}
+	if bs == nil {
+		return nil, errors.New("grpc base server is required")
+	}
 	s := &GrpcServer{
 		conf:       config,
 		logger:     logger,
@@ -79,6 +85,9 @@ func NewGrpcServer(config core.IConfig, logger core.ILogger, bs *grpc.Server, op
 }
 
 func NewGrpcServiceServer(config core.IConfig, logger core.ILogger, opt GrpcServiceOption) (*GrpcServer, error) {
+	if err := validateServerDependencies(config, logger); err != nil {
+		return nil, err
+	}
 	baseServer := grpc.NewServer(grpc.ChainUnaryInterceptor(
 		unaryInterceptors(config, logger, opt)...,
 	))
@@ -191,15 +200,15 @@ func (s *GrpcServer) Shutdown(ctx context.Context) error {
 	return errs
 }
 
-func NewServerGroup(servers ...core.Server) *ServerGroup {
+func newServerGroup(servers ...core.Server) *ServerGroup {
 	group := &ServerGroup{shutdownTimeout: 10 * time.Second}
 	for _, srv := range servers {
-		group.AddServer("", srv)
+		group.addServer("", srv)
 	}
 	return group
 }
 
-func (s *ServerGroup) AddServer(name string, server core.Server) {
+func (s *ServerGroup) addServer(name string, server core.Server) {
 	s.servers = append(s.servers, managedServer{name: name, server: server})
 }
 
@@ -208,13 +217,19 @@ func NewGrpcServerGroup[T core.Server](
 	logger core.ILogger,
 	newGrpcServer func(core.IConfig, core.ILogger) (T, error),
 ) (*ServerGroup, error) {
+	if err := validateServerDependencies(config, logger); err != nil {
+		return nil, err
+	}
+	if newGrpcServer == nil {
+		return nil, errors.New("grpc server factory is required")
+	}
 	grpcServer, err := newGrpcServer(config, logger)
 	if err != nil {
 		return nil, fmt.Errorf("init grpc server: %w", err)
 	}
 
-	group := NewServerGroup()
-	group.AddServer("grpc", grpcServer)
+	group := newServerGroup()
+	group.addServer("grpc", grpcServer)
 	if err := addMetricsServer(config, logger, group); err != nil {
 		return nil, err
 	}
@@ -352,6 +367,16 @@ func addMetricsServer(config core.IConfig, logger core.ILogger, group *ServerGro
 	if err != nil {
 		return fmt.Errorf("init metrics server: %w", err)
 	}
-	group.AddServer("metrics", metricsServer)
+	group.addServer("metrics", metricsServer)
+	return nil
+}
+
+func validateServerDependencies(config core.IConfig, logger core.ILogger) error {
+	if config == nil {
+		return errors.New("server config is required")
+	}
+	if logger == nil {
+		return errors.New("server logger is required")
+	}
 	return nil
 }

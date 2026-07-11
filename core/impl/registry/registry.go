@@ -28,6 +28,12 @@ type Registry struct {
 type Option func(*Registry) error
 
 func NewRegistry(conf core.IConfig, logger core.ILogger, opts ...Option) (*Registry, error) {
+	if conf == nil {
+		return nil, cerrs.New("registry config is required")
+	}
+	if logger == nil {
+		return nil, cerrs.New("registry logger is required")
+	}
 	registry := &Registry{
 		logger: logger,
 		config: conf,
@@ -53,6 +59,12 @@ func NewRegistry(conf core.IConfig, logger core.ILogger, opts ...Option) (*Regis
 // policy. Keeping this policy in the registry package lets transport servers
 // accept any IRegistry implementation without knowing how it is constructed.
 func NewDefault(conf core.IConfig, logger core.ILogger) (core.IRegistry, error) {
+	if conf == nil {
+		return nil, cerrs.New("registry config is required")
+	}
+	if logger == nil {
+		return nil, cerrs.New("registry logger is required")
+	}
 	registryConf := conf.GetRegistry()
 	if strings.TrimSpace(conf.GetConsul().Address) == "" {
 		return nil, nil

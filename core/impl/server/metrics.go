@@ -22,6 +22,9 @@ type MetricsServer struct {
 }
 
 func NewMetricsServer(config core.IConfig, logger core.ILogger) (*MetricsServer, error) {
+	if err := validateServerDependencies(config, logger); err != nil {
+		return nil, err
+	}
 	s := &MetricsServer{
 		config:   config,
 		logger:   logger,

@@ -51,6 +51,12 @@ func NewHTTPServer(config core.IConfig, logger core.ILogger, handler *runtime.Se
 }
 
 func NewHTTPServerWithHandler(config core.IConfig, logger core.ILogger, handler http.Handler) (*HTTPServer, error) {
+	if err := validateServerDependencies(config, logger); err != nil {
+		return nil, err
+	}
+	if handler == nil {
+		return nil, errors.New("http handler is required")
+	}
 	s := &HTTPServer{
 		config:   config,
 		logger:   logger,
@@ -67,14 +73,23 @@ func NewHTTPGatewayServerGroup[T core.Server](
 	newGatewayMux GatewayMuxFactory,
 	swaggerOption SwaggerOption,
 ) (*ServerGroup, error) {
+	if err := validateServerDependencies(config, logger); err != nil {
+		return nil, err
+	}
+	if newGrpcServer == nil {
+		return nil, errors.New("grpc server factory is required")
+	}
+	if newGatewayMux == nil {
+		return nil, errors.New("gateway mux factory is required")
+	}
 	grpcServer, err := newGrpcServer(config, logger)
 	if err != nil {
 		return nil, fmt.Errorf("init grpc server: %w", err)
 	}
 
-	group := NewServerGroup()
-	group.AddServer("grpc", grpcServer)
-	group.AddServer("http", &gatewayHTTPServer{
+	group := newServerGroup()
+	group.addServer("grpc", grpcServer)
+	group.addServer("http", &gatewayHTTPServer{
 		config:        config,
 		logger:        logger,
 		newGatewayMux: newGatewayMux,
@@ -87,6 +102,9 @@ func NewHTTPGatewayServerGroup[T core.Server](
 }
 
 func NewGatewayMux(ctx context.Context, config core.IConfig, registers ...GatewayRegister) (*runtime.ServeMux, error) {
+	if config == nil {
+		return nil, errors.New("gateway config is required")
+	}
 	mux := runtime.NewServeMux(
 		runtime.WithIncomingHeaderMatcher(incomingHeaderMatcher),
 	)
@@ -97,6 +115,9 @@ func NewGatewayMux(ctx context.Context, config core.IConfig, registers ...Gatewa
 	}
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	for _, register := range registers {
+		if register == nil {
+			return nil, errors.New("gateway register function is required")
+		}
 		if err := register(ctx, mux, endpoint, opts); err != nil {
 			return nil, err
 		}
