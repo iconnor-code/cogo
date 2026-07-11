@@ -15,13 +15,19 @@ type SwaggerOption struct {
 }
 
 func NewSwaggerHandler(apiHandler http.Handler, opt SwaggerOption) http.Handler {
-	if opt.SpecFS == nil || strings.TrimSpace(opt.SpecFile) == "" {
-		if apiHandler == nil {
-			return http.NotFoundHandler()
-		}
-		return apiHandler
-	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	if opt.SpecFS == nil || strings.TrimSpace(opt.SpecFile) == "" {
+		if apiHandler != nil {
+			mux.Handle("/", apiHandler)
+		}
+		return mux
+	}
 	specPath := "/swagger/openapi.json"
 
 	mux.HandleFunc("/swagger", func(w http.ResponseWriter, r *http.Request) {

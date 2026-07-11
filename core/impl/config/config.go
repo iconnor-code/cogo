@@ -88,6 +88,8 @@ func (ct *Config) GetEtcd() core.EtcdConfig { return ct.Etcd }
 
 func (ct *Config) GetConsul() core.ConsulConfig { return ct.Consul }
 
+func (ct *Config) GetDiscovery() core.DiscoveryConfig { return ct.Discovery }
+
 func (ct *Config) GetRegistry() core.RegistryConfig { return ct.Registry }
 
 func (ct *Config) GetSMTP() core.SMTPConfig { return ct.SMTP }
@@ -130,6 +132,13 @@ func (ct *Config) loadFromFile() error {
 }
 
 func (ct *Config) applyEnvOverrides() {
+	setStringFromEnv(&ct.MySQL.DSN, "MYSITE_MYSQL_DSN")
+	setStringFromEnv(&ct.Redis.Addr, "MYSITE_REDIS_ADDR")
+	setStringFromEnv(&ct.Redis.Password, "MYSITE_REDIS_PASSWORD")
+	setStringFromEnv(&ct.SMTP.Host, "MYSITE_SMTP_HOST")
+	setStringFromEnv(&ct.SMTP.Username, "MYSITE_SMTP_USERNAME")
+	setStringFromEnv(&ct.SMTP.Password, "MYSITE_SMTP_PASSWORD")
+	setStringFromEnv(&ct.JWT.AccessSecret, "MYSITE_JWT_ACCESS_SECRET")
 	setStringFromEnv(&ct.OSS.Endpoint, "MYSITE_OSS_ENDPOINT")
 	setStringFromEnv(&ct.OSS.AccessKeyID, "MYSITE_OSS_ACCESS_KEY_ID")
 	setStringFromEnv(&ct.OSS.AccessKeySecret, "MYSITE_OSS_ACCESS_KEY_SECRET")

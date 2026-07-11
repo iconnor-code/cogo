@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/iconnor-code/cogo/cerrs"
@@ -40,6 +42,9 @@ type GrpcServer struct {
 	logger     core.ILogger
 	listener   net.Listener
 	registry   core.IRegistry
+	closers    []io.Closer
+	closeOnce  sync.Once
+	closeErr   error
 	baseServer *grpc.Server
 	health     *health.Server
 	serveErr   chan error
@@ -54,6 +59,7 @@ type GrpcServiceOption struct {
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
 	RegisterServices       func(*grpc.Server) error
 	Registry               core.IRegistry
+	Closers                []io.Closer
 }
 
 func WithGrpcRegistry(registry core.IRegistry) GrpcServerOption {
@@ -92,15 +98,18 @@ func NewGrpcServiceServer(config core.IConfig, logger core.ILogger, opt GrpcServ
 		unaryInterceptors(config, logger, opt)...,
 	))
 	if err := registerUnaryServices(baseServer, opt); err != nil {
+		_ = closeResources(opt.Closers)
 		return nil, err
 	}
 	healthServer := registerHealthServer(baseServer, config)
 
 	server, err := NewGrpcServer(config, logger, baseServer, WithGrpcRegistry(opt.Registry))
 	if err != nil {
+		_ = closeResources(opt.Closers)
 		return nil, err
 	}
 	server.health = healthServer
+	server.closers = append(server.closers, opt.Closers...)
 	return server, nil
 }
 
@@ -111,6 +120,7 @@ func (s *GrpcServer) Start(ctx context.Context) (err error) {
 	defer func() {
 		if err != nil {
 			s.lifecycle.markStartFailed()
+			err = errors.Join(err, s.Close())
 		}
 	}()
 
@@ -197,6 +207,27 @@ func (s *GrpcServer) Shutdown(ctx context.Context) error {
 		<-stopped
 		errs = errors.Join(errs, ctx.Err())
 	}
+	errs = errors.Join(errs, s.Close())
+	return errs
+}
+
+// Close releases resources owned by the server even if Start never succeeded.
+// It is idempotent and is also called by Shutdown.
+func (s *GrpcServer) Close() error {
+	s.closeOnce.Do(func() {
+		s.closeErr = closeResources(s.closers)
+		s.closers = nil
+	})
+	return s.closeErr
+}
+
+func closeResources(closers []io.Closer) error {
+	var errs error
+	for i := len(closers) - 1; i >= 0; i-- {
+		if closers[i] != nil {
+			errs = errors.Join(errs, closers[i].Close())
+		}
+	}
 	return errs
 }
 
@@ -231,7 +262,7 @@ func NewGrpcServerGroup[T core.Server](
 	group := newServerGroup()
 	group.addServer("grpc", grpcServer)
 	if err := addMetricsServer(config, logger, group); err != nil {
-		return nil, err
+		return nil, errors.Join(err, closeOwned(grpcServer))
 	}
 	return group, nil
 }
@@ -243,8 +274,9 @@ func (s *ServerGroup) start(ctx context.Context) error {
 		if err := srv.server.Start(ctx); err != nil {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
 			defer cancel()
+			currentShutdownErr := srv.server.Shutdown(shutdownCtx)
 			shutdownErr := s.shutdownStarted(shutdownCtx, i-1)
-			return errors.Join(fmt.Errorf("start %s server: %w", srv.name, err), shutdownErr)
+			return errors.Join(fmt.Errorf("start %s server: %w", srv.name, err), currentShutdownErr, shutdownErr)
 		}
 		s.started++
 		go func(srv managedServer) {
@@ -369,6 +401,14 @@ func addMetricsServer(config core.IConfig, logger core.ILogger, group *ServerGro
 	}
 	group.addServer("metrics", metricsServer)
 	return nil
+}
+
+func closeOwned(server any) error {
+	closer, ok := server.(io.Closer)
+	if !ok {
+		return nil
+	}
+	return closer.Close()
 }
 
 func validateServerDependencies(config core.IConfig, logger core.ILogger) error {

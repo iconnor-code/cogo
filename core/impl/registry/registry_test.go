@@ -70,11 +70,11 @@ func TestNewDefaultRejectsIncompleteRegistryConfig(t *testing.T) {
 		registry    core.RegistryConfig
 		wantErrPart string
 	}{
-		{name: "missing name", registry: core.RegistryConfig{Address: "127.0.0.1", Port: 10000}, wantErrPart: "name"},
-		{name: "missing address", registry: core.RegistryConfig{Name: "account", Port: 10000}, wantErrPart: "address"},
-		{name: "invalid port", registry: core.RegistryConfig{Name: "account", Address: "127.0.0.1", Port: 70000}, wantErrPart: "port"},
-		{name: "invalid interval", registry: core.RegistryConfig{Name: "account", Address: "127.0.0.1", Port: 10000, HealthCheck: core.RegistryHealthCheckConfig{Interval: "bad", Timeout: "5s"}}, wantErrPart: "interval"},
-		{name: "invalid timeout", registry: core.RegistryConfig{Name: "account", Address: "127.0.0.1", Port: 10000, HealthCheck: core.RegistryHealthCheckConfig{Interval: "3s", Timeout: "0s"}}, wantErrPart: "timeout"},
+		{name: "missing name", registry: core.RegistryConfig{Provider: "consul", Address: "127.0.0.1", Port: 10000}, wantErrPart: "name"},
+		{name: "missing address", registry: core.RegistryConfig{Provider: "consul", Name: "account", Port: 10000}, wantErrPart: "address"},
+		{name: "invalid port", registry: core.RegistryConfig{Provider: "consul", Name: "account", Address: "127.0.0.1", Port: 70000}, wantErrPart: "port"},
+		{name: "invalid interval", registry: core.RegistryConfig{Provider: "consul", Name: "account", Address: "127.0.0.1", Port: 10000, HealthCheck: core.RegistryHealthCheckConfig{Interval: "bad", Timeout: "5s"}}, wantErrPart: "interval"},
+		{name: "invalid timeout", registry: core.RegistryConfig{Provider: "consul", Name: "account", Address: "127.0.0.1", Port: 10000, HealthCheck: core.RegistryHealthCheckConfig{Interval: "3s", Timeout: "0s"}}, wantErrPart: "timeout"},
 	}
 
 	for _, tt := range tests {
@@ -95,9 +95,10 @@ func TestNewDefaultBuildsCompleteConsulRegistry(t *testing.T) {
 	config := &cogoconfig.Config{Config: core.Config{
 		Consul: core.ConsulConfig{Address: "127.0.0.1:8500"},
 		Registry: core.RegistryConfig{
-			Name:    "account",
-			Address: "127.0.0.1",
-			Port:    10000,
+			Provider: "consul",
+			Name:     "account",
+			Address:  "127.0.0.1",
+			Port:     10000,
 			HealthCheck: core.RegistryHealthCheckConfig{
 				Interval: "3s",
 				Timeout:  "5s",

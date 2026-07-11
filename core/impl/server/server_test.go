@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -30,6 +31,13 @@ type testRegistry struct {
 	deregistered  bool
 	err           error
 	deregisterErr error
+}
+
+type testCloser struct{ closed bool }
+
+func (c *testCloser) Close() error {
+	c.closed = true
+	return nil
 }
 
 type testServer struct {
@@ -79,12 +87,14 @@ func (r *testRegistry) Register(context.Context) error {
 
 func TestGrpcServerStartClosesListenerWhenRegistrationFails(t *testing.T) {
 	registry := &testRegistry{err: errors.New("register failed")}
+	closer := &testCloser{}
 	listener := bufconn.Listen(1024)
 	s := &GrpcServer{
 		conf:       &cogoconfig.Config{Config: core.Config{GRPC: core.GRPCConfig{Listen: "bufconn"}}},
 		logger:     &testLogger{},
 		listener:   listener,
 		registry:   registry,
+		closers:    []io.Closer{closer},
 		baseServer: grpc.NewServer(),
 		serveErr:   make(chan error, 1),
 	}
@@ -94,6 +104,26 @@ func TestGrpcServerStartClosesListenerWhenRegistrationFails(t *testing.T) {
 	}
 	if _, err := s.listener.Accept(); err == nil {
 		t.Fatal("expected listener to be closed")
+	}
+	if !closer.closed {
+		t.Fatal("expected resources to close after registration failure")
+	}
+}
+
+func TestGrpcServerStartClosesResourcesWhenListenFails(t *testing.T) {
+	closer := &testCloser{}
+	s := &GrpcServer{
+		conf:       &cogoconfig.Config{Config: core.Config{GRPC: core.GRPCConfig{Listen: "invalid-address"}}},
+		logger:     &testLogger{},
+		closers:    []io.Closer{closer},
+		baseServer: grpc.NewServer(),
+		serveErr:   make(chan error, 1),
+	}
+	if err := s.Start(context.Background()); err == nil {
+		t.Fatal("expected listen error")
+	}
+	if !closer.closed {
+		t.Fatal("expected resources to close after listen failure")
 	}
 }
 
@@ -224,12 +254,14 @@ func TestMetricsServerStopBeforeStartIsNoop(t *testing.T) {
 
 func TestGrpcServerStartStopRegistersAndDeregisters(t *testing.T) {
 	registry := &testRegistry{}
+	closer := &testCloser{}
 	listener := bufconn.Listen(1024)
 	s := &GrpcServer{
 		conf:       &cogoconfig.Config{Config: core.Config{GRPC: core.GRPCConfig{Listen: "bufconn"}}},
 		logger:     &testLogger{},
 		listener:   listener,
 		registry:   registry,
+		closers:    []io.Closer{closer},
 		baseServer: grpc.NewServer(),
 		serveErr:   make(chan error, 1),
 	}
@@ -246,6 +278,9 @@ func TestGrpcServerStartStopRegistersAndDeregisters(t *testing.T) {
 	}
 	if !registry.deregistered {
 		t.Fatalf("expected registry.DeRegister to be called")
+	}
+	if !closer.closed {
+		t.Fatal("expected owned resources to be closed")
 	}
 }
 
@@ -291,6 +326,9 @@ func TestServerGroupStopsStartedServersOnStartError(t *testing.T) {
 	}
 	if second.started {
 		t.Fatalf("second server should not be marked started")
+	}
+	if !second.stopped {
+		t.Fatal("expected failing server to clean up partial startup")
 	}
 }
 

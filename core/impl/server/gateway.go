@@ -96,7 +96,7 @@ func NewHTTPGatewayServerGroup[T core.Server](
 		swagger:       swaggerOption,
 	})
 	if err := addMetricsServer(config, logger, group); err != nil {
-		return nil, err
+		return nil, errors.Join(err, closeOwned(grpcServer))
 	}
 	return group, nil
 }

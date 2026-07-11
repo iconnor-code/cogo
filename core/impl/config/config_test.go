@@ -67,7 +67,14 @@ etcd:
     - 127.0.0.1:2379
 consul:
   address: 127.0.0.1:8500
+discovery:
+  provider: dns
+  refresh_interval: 10s
+  timeout: 3s
+  services:
+    account: dns:///account:10000
 registry:
+  provider: consul
   name: account
   address: 127.0.0.1
   port: 10000
@@ -106,6 +113,9 @@ oss:
 	}
 	if conf.Registry.HealthCheck.Interval != "3s" {
 		t.Fatalf("registry health check interval = %q, want 3s", conf.Registry.HealthCheck.Interval)
+	}
+	if conf.Discovery.Provider != "dns" || conf.Discovery.Timeout != "3s" || conf.Discovery.Services["account"] != "dns:///account:10000" {
+		t.Fatalf("discovery config = %+v", conf.Discovery)
 	}
 	if conf.OSS.BucketName != "mysite" {
 		t.Fatalf("oss bucket = %q, want mysite", conf.OSS.BucketName)
@@ -149,10 +159,16 @@ admin:
 	}
 }
 
-func TestOSSConfigSupportsEnvOverrides(t *testing.T) {
+func TestConfigSupportsSecretEnvOverrides(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "app.yaml")
 	content := []byte(`
+mysql:
+  dsn: file-dsn
+redis:
+  addr: redis-file:6379
+jwt:
+  access_secret: file-secret
 oss:
   endpoint: minio.local:9000
   access_key_id: replace-me-access-key
@@ -166,6 +182,9 @@ oss:
 	t.Setenv("MYSITE_OSS_ACCESS_KEY_ID", "access")
 	t.Setenv("MYSITE_OSS_ACCESS_KEY_SECRET", "secret")
 	t.Setenv("MYSITE_OSS_BASE_URL", "http://example.com/mysite")
+	t.Setenv("MYSITE_MYSQL_DSN", "env-dsn")
+	t.Setenv("MYSITE_REDIS_ADDR", "redis:6379")
+	t.Setenv("MYSITE_JWT_ACCESS_SECRET", "jwt-secret")
 
 	conf, err := NewConfig(WithFilePath(configPath))
 	if err != nil {
@@ -179,5 +198,8 @@ oss:
 	}
 	if conf.OSS.BaseURL != "http://example.com/mysite" {
 		t.Fatalf("oss base url = %q, want env override", conf.OSS.BaseURL)
+	}
+	if conf.MySQL.DSN != "env-dsn" || conf.Redis.Addr != "redis:6379" || conf.JWT.AccessSecret != "jwt-secret" {
+		t.Fatalf("secret overrides not applied: mysql=%q redis=%q", conf.MySQL.DSN, conf.Redis.Addr)
 	}
 }

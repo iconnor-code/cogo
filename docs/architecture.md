@@ -10,7 +10,6 @@
 - `core/ILogger`：统一日志能力
 - `core/IServer`：服务生命周期（`Start` / `Stop`）
 - `core/IRegistry`：服务注册与反注册
-- `core/IDiscovery`：服务发现
 - `core/ISrvCtx`：并发安全的请求级上下文（logger/config/biz/user/扩展字段）
 
 ## 实现分层
@@ -22,7 +21,7 @@
   - `http.go`：HTTP/gRPC-Gateway 服务启动与关闭（支持 TLS）
   - `metrics.go`：Prometheus 指标暴露
 - `core/impl/registry`：Consul / Etcd 注册实现
-- `core/impl/discovery`：基于 Consul 的发现与负载均衡
+- `core/impl/rpcclient`：推荐的 gRPC 连接池；支持 DNS/Kubernetes 与 Consul resolver、客户端负载均衡和统一关闭
 - `core/impl/srvctx`：请求上下文实现
 
 ## 典型请求流程
@@ -39,3 +38,4 @@
 - 接口优先，便于替换实现。
 - 组件组合式使用，按服务实际需求选择。
 - 通过 `ISrvCtx` 在拦截器与业务层传递统一上下文。
+- 业务 gateway 依赖 protobuf 生成的类型化客户端；注册、发现和连接生命周期留在基础设施层。

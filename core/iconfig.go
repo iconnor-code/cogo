@@ -13,6 +13,7 @@ type IConfig interface {
 	GetRedis() RedisConfig
 	GetEtcd() EtcdConfig
 	GetConsul() ConsulConfig
+	GetDiscovery() DiscoveryConfig
 	GetRegistry() RegistryConfig
 	GetSMTP() SMTPConfig
 	GetJWT() JWTConfig
@@ -26,19 +27,20 @@ type Config struct {
 	BizID   int    `mapstructure:"biz_id" yaml:"biz_id"`
 	BizName string `mapstructure:"biz_name" yaml:"biz_name"`
 
-	GRPC     GRPCConfig     `mapstructure:"grpc" yaml:"grpc"`
-	HTTP     HTTPConfig     `mapstructure:"http" yaml:"http"`
-	Logger   LoggerConfig   `mapstructure:"logger" yaml:"logger"`
-	Metrics  MetricsConfig  `mapstructure:"metrics" yaml:"metrics"`
-	MySQL    MySQLConfig    `mapstructure:"mysql" yaml:"mysql"`
-	Redis    RedisConfig    `mapstructure:"redis" yaml:"redis"`
-	Etcd     EtcdConfig     `mapstructure:"etcd" yaml:"etcd"`
-	Consul   ConsulConfig   `mapstructure:"consul" yaml:"consul"`
-	Registry RegistryConfig `mapstructure:"registry" yaml:"registry"`
-	SMTP     SMTPConfig     `mapstructure:"smtp" yaml:"smtp"`
-	JWT      JWTConfig      `mapstructure:"jwt" yaml:"jwt"`
-	Admin    AdminConfig    `mapstructure:"admin" yaml:"admin"`
-	OSS      OSSConfig      `mapstructure:"oss" yaml:"oss"`
+	GRPC      GRPCConfig      `mapstructure:"grpc" yaml:"grpc"`
+	HTTP      HTTPConfig      `mapstructure:"http" yaml:"http"`
+	Logger    LoggerConfig    `mapstructure:"logger" yaml:"logger"`
+	Metrics   MetricsConfig   `mapstructure:"metrics" yaml:"metrics"`
+	MySQL     MySQLConfig     `mapstructure:"mysql" yaml:"mysql"`
+	Redis     RedisConfig     `mapstructure:"redis" yaml:"redis"`
+	Etcd      EtcdConfig      `mapstructure:"etcd" yaml:"etcd"`
+	Consul    ConsulConfig    `mapstructure:"consul" yaml:"consul"`
+	Discovery DiscoveryConfig `mapstructure:"discovery" yaml:"discovery"`
+	Registry  RegistryConfig  `mapstructure:"registry" yaml:"registry"`
+	SMTP      SMTPConfig      `mapstructure:"smtp" yaml:"smtp"`
+	JWT       JWTConfig       `mapstructure:"jwt" yaml:"jwt"`
+	Admin     AdminConfig     `mapstructure:"admin" yaml:"admin"`
+	OSS       OSSConfig       `mapstructure:"oss" yaml:"oss"`
 }
 
 type GRPCConfig struct {
@@ -95,7 +97,18 @@ type ConsulConfig struct {
 	Address string `mapstructure:"address" yaml:"address"`
 }
 
+// DiscoveryConfig selects how logical service names are resolved for gRPC
+// clients. Provider is either "dns" or "consul"; an empty provider disables
+// discovery until a caller requests a downstream connection.
+type DiscoveryConfig struct {
+	Provider        string            `mapstructure:"provider" yaml:"provider"`
+	RefreshInterval string            `mapstructure:"refresh_interval" yaml:"refresh_interval"`
+	Timeout         string            `mapstructure:"timeout" yaml:"timeout"`
+	Services        map[string]string `mapstructure:"services" yaml:"services"`
+}
+
 type RegistryConfig struct {
+	Provider    string                    `mapstructure:"provider" yaml:"provider"`
 	Name        string                    `mapstructure:"name" yaml:"name"`
 	Address     string                    `mapstructure:"address" yaml:"address"`
 	Port        int                       `mapstructure:"port" yaml:"port"`

@@ -66,8 +66,15 @@ func NewDefault(conf core.IConfig, logger core.ILogger) (core.IRegistry, error) 
 		return nil, cerrs.New("registry logger is required")
 	}
 	registryConf := conf.GetRegistry()
-	if strings.TrimSpace(conf.GetConsul().Address) == "" {
+	provider := strings.ToLower(strings.TrimSpace(registryConf.Provider))
+	if provider == "" || provider == "none" {
 		return nil, nil
+	}
+	if provider != "consul" {
+		return nil, fmt.Errorf("unsupported registry provider %q", registryConf.Provider)
+	}
+	if strings.TrimSpace(conf.GetConsul().Address) == "" {
+		return nil, cerrs.New("consul address is required when registry provider is consul")
 	}
 	if strings.TrimSpace(registryConf.Name) == "" {
 		return nil, cerrs.New("registry name is required when consul is configured")

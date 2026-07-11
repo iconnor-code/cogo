@@ -29,6 +29,7 @@ logger:
   max_backups: 10
 
 registry:
+  provider: consul # 留空即关闭注册
   name: account.grpc
   address: 127.0.0.1
   port: 9000
@@ -38,6 +39,13 @@ registry:
 
 consul:
   address: "127.0.0.1:8500"
+
+discovery:
+  provider: dns # dns | consul；留空即关闭
+  refresh_interval: "10s" # 仅 consul 使用
+  timeout: "3s" # 仅 consul 使用，单次健康实例查询超时
+  services:
+    account: "dns:///account:9000"
 
 etcd:
   endpoints:
@@ -74,13 +82,21 @@ smtp:
 - `http.listen`：HTTP/gateway 监听地址。
 - `http.ssl`：可选；启用 https 时需要 `cert_file` 与 `key_file`。
 - `metrics.listen`：Prometheus 指标监听地址。
-- `registry.*`：服务注册信息。
+- `registry.provider`：注册实现；当前默认工厂支持 `consul`，留空或 `none` 时不注册。
+- `registry.*`：启用注册时使用的服务实例信息。
+- `discovery.provider`：下游服务寻址策略；`dns` 适用于固定地址和 Kubernetes Service DNS，`consul` 使用健康实例 resolver。
+- `discovery.services`：`dns` 策略下逻辑服务名到 gRPC target 的映射。
+- `discovery.timeout`：Consul 单次健康实例查询超时，默认 `3s`。
 - `consul.address`：Consul 地址。
 - `etcd.endpoints`：Etcd endpoint 列表。
 - `mysql.*`：MySQL 连接与连接池。
 - `redis.*`：Redis 连接参数。
 - `jwt.*`：JWT 签名密钥与过期策略。
 - `smtp.*`：SMTP 发信参数。
+
+敏感配置可通过 `MYSITE_MYSQL_DSN`、`MYSITE_REDIS_ADDR`、
+`MYSITE_REDIS_PASSWORD`、`MYSITE_JWT_ACCESS_SECRET`、`MYSITE_SMTP_*` 和
+`MYSITE_OSS_*` 环境变量覆盖，便于 Kubernetes Secret 注入。
 
 ## 注意事项
 
