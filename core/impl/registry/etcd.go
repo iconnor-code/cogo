@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -26,16 +27,16 @@ func (r *Registry) etcdRegistryKey() (string, error) {
 	return fmt.Sprintf("/services/%s/%s", r.config.GetRegistry().Name, instanceID), nil
 }
 
-func WithEtcdClient(etcd *client.EtcdClient) core.RegistryOption {
-	return func(r core.IRegistry) error {
-		r.(*Registry).etcdClient = etcd
+func WithEtcdClient(etcd *client.EtcdClient) Option {
+	return func(r *Registry) error {
+		r.etcdClient = etcd
 		return nil
 	}
 }
 
-func WithEtcdRegisterLeaseTTL(ttl int64) core.RegistryOption {
-	return func(r core.IRegistry) error {
-		r.(*Registry).leaseTTL = ttl
+func WithEtcdRegisterLeaseTTL(ttl int64) Option {
+	return func(r *Registry) error {
+		r.leaseTTL = ttl
 		return nil
 	}
 }
@@ -80,11 +81,6 @@ func (r *Registry) keepAlive(ctx context.Context) {
 		for {
 			select {
 			case <-ctx.Done():
-				_, doneerr := r.etcdClient.Revoke(context.Background(), r.leaseID)
-				if doneerr != nil {
-					r.logger.Error("etcd revoke lease failed", zap.Error(doneerr), zap.Int64("lease_id", int64(r.leaseID)))
-					return
-				}
 				return
 			case <-ticker.C:
 				_, keepAliveErr := r.etcdClient.KeepAliveOnce(ctx, r.leaseID)
@@ -105,9 +101,7 @@ func (r *Registry) etcdDeRegister(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = r.etcdClient.Delete(ctx, key)
-	if err != nil {
-		return err
-	}
-	return nil
+	_, deleteErr := r.etcdClient.Delete(ctx, key)
+	_, revokeErr := r.etcdClient.Revoke(ctx, r.leaseID)
+	return errors.Join(deleteErr, revokeErr)
 }

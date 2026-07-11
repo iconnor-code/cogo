@@ -1,22 +1,22 @@
 package registry
 
 import (
+	"context"
 	"fmt"
 
 	consul "github.com/hashicorp/consul/api"
 	"github.com/iconnor-code/cogo/client"
-	"github.com/iconnor-code/cogo/core"
 	"go.uber.org/zap"
 )
 
-func WithConsulClient(c *client.Consul) core.RegistryOption {
-	return func(r core.IRegistry) error {
-		r.(*Registry).consulClient = c
+func WithConsulClient(c *client.Consul) Option {
+	return func(r *Registry) error {
+		r.consulClient = c
 		return nil
 	}
 }
 
-func (r *Registry) consulRegister() error {
+func (r *Registry) consulRegister(ctx context.Context) error {
 	name, address, port, err := r.serviceConfig()
 	if err != nil {
 		return err
@@ -37,15 +37,16 @@ func (r *Registry) consulRegister() error {
 		},
 	}
 	r.logger.Info("consul register", zap.String("id", serviceRegistration.ID), zap.String("name", serviceRegistration.Name), zap.String("address", serviceRegistration.Address), zap.Int("port", serviceRegistration.Port))
-	return r.consulClient.DefaultClient().Agent().ServiceRegister(serviceRegistration)
+	opts := consul.ServiceRegisterOpts{}.WithContext(ctx)
+	return r.consulClient.DefaultClient().Agent().ServiceRegisterOpts(serviceRegistration, opts)
 }
 
-func (r *Registry) consulDeRegister() error {
+func (r *Registry) consulDeRegister(ctx context.Context) error {
 	instanceID, err := r.getInstanceID()
 	if err != nil {
 		return err
 	}
-	err = r.consulClient.DefaultClient().Agent().ServiceDeregister(instanceID)
+	err = r.consulClient.DefaultClient().Agent().ServiceDeregisterOpts(instanceID, (&consul.QueryOptions{}).WithContext(ctx))
 	if err != nil {
 		return err
 	}

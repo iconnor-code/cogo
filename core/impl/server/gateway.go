@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
-	"time"
+	"sync"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/iconnor-code/cogo/cerrs"
@@ -21,10 +23,17 @@ type GatewayRegister func(context.Context, *runtime.ServeMux, string, []grpc.Dia
 type GatewayMuxFactory func(context.Context, core.IConfig) (*runtime.ServeMux, error)
 
 type HTTPServer struct {
-	config  core.IConfig
-	logger  core.ILogger
-	handler http.Handler
-	server  *http.Server
+	config   core.IConfig
+	logger   core.ILogger
+	handler  http.Handler
+	server   *http.Server
+	serveErr chan error
+}
+
+type contextLifecycle struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+	once   sync.Once
 }
 
 func NewHTTPServer(config core.IConfig, logger core.ILogger, handler *runtime.ServeMux) (*HTTPServer, error) {
@@ -33,14 +42,15 @@ func NewHTTPServer(config core.IConfig, logger core.ILogger, handler *runtime.Se
 
 func NewHTTPServerWithHandler(config core.IConfig, logger core.ILogger, handler http.Handler) (*HTTPServer, error) {
 	s := &HTTPServer{
-		config:  config,
-		logger:  logger,
-		handler: handler,
+		config:   config,
+		logger:   logger,
+		handler:  handler,
+		serveErr: make(chan error, 1),
 	}
 	return s, nil
 }
 
-func NewHTTPGatewayServerGroup[T core.IServer](
+func NewHTTPGatewayServerGroup[T core.Server](
 	config core.IConfig,
 	logger core.ILogger,
 	newGrpcServer func(core.IConfig, core.ILogger) (T, error),
@@ -52,20 +62,25 @@ func NewHTTPGatewayServerGroup[T core.IServer](
 		return nil, fmt.Errorf("init grpc server: %w", err)
 	}
 
-	mux, err := newGatewayMux(context.Background(), config)
+	gatewayCtx, cancelGateway := context.WithCancel(context.Background())
+	mux, err := newGatewayMux(gatewayCtx, config)
 	if err != nil {
+		cancelGateway()
 		return nil, fmt.Errorf("init grpc gateway: %w", err)
 	}
 	handler := NewSwaggerHandler(mux, swaggerOption)
 	httpServer, err := NewHTTPServerWithHandler(config, logger, handler)
 	if err != nil {
+		cancelGateway()
 		return nil, fmt.Errorf("init http server: %w", err)
 	}
 
 	group := NewServerGroup()
 	group.AddServer("grpc", grpcServer)
+	group.AddServer("gateway", newContextLifecycle(cancelGateway))
 	group.AddServer("http", httpServer)
 	if err := addMetricsServer(config, logger, group); err != nil {
+		cancelGateway()
 		return nil, err
 	}
 	return group, nil
@@ -102,8 +117,8 @@ func incomingHeaderMatcher(header string) (string, bool) {
 	return runtime.DefaultHeaderMatcher(header)
 }
 
-func (s *HTTPServer) Start() error {
-	startHTTPServer := func() (*http.Server, error) {
+func (s *HTTPServer) Start(context.Context) error {
+	startHTTPServer := func() (*http.Server, net.Listener, error) {
 		listen := s.config.GetHTTP().Listen
 		httpSrv := &http.Server{
 			Handler: s.handler,
@@ -111,39 +126,37 @@ func (s *HTTPServer) Start() error {
 		}
 		listener, err := net.Listen("tcp", httpSrv.Addr)
 		if err != nil {
-			return nil, cerrs.Wrap(err)
+			return nil, nil, cerrs.Wrap(err)
 		}
-		go func() {
-			s.logger.Info("http server start", zap.String("listen", listen))
-			err := httpSrv.Serve(listener)
-			if err != nil && err != http.ErrServerClosed {
-				s.logger.Error("http server start failed", zap.Error(err))
-			}
-		}()
-		return httpSrv, nil
+		return httpSrv, listener, nil
 	}
 
-	startHTTPSServer := func(sslConfMap map[string]string) (*http.Server, error) {
+	startHTTPSServer := func(certFile, keyFile string) (*http.Server, net.Listener, error) {
+		certificate, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return nil, nil, cerrs.Wrap(err)
+		}
 		listen := s.config.GetHTTP().Listen
 		httpsSrv := &http.Server{
 			Handler: s.handler,
 			Addr:    listen,
+			TLSConfig: &tls.Config{
+				Certificates: []tls.Certificate{certificate},
+				MinVersion:   tls.VersionTLS12,
+			},
 		}
 		listener, err := net.Listen("tcp", httpsSrv.Addr)
 		if err != nil {
-			return nil, cerrs.Wrap(err)
+			return nil, nil, cerrs.Wrap(err)
 		}
-		go func() {
-			s.logger.Info("https server start", zap.String("listen", listen))
-			err := httpsSrv.ServeTLS(listener, sslConfMap["cert_file"], sslConfMap["key_file"])
-			if err != nil && err != http.ErrServerClosed {
-				s.logger.Error("https server start failed", zap.Error(err))
-			}
-		}()
-		return httpsSrv, nil
+		return httpsSrv, listener, nil
 	}
 
-	var err error
+	var (
+		err      error
+		listener net.Listener
+		protocol = "http"
+	)
 	httpConf := s.config.GetHTTP()
 	if httpConf.SSL.CertFile != "" || httpConf.SSL.KeyFile != "" {
 		if httpConf.SSL.CertFile == "" {
@@ -152,30 +165,63 @@ func (s *HTTPServer) Start() error {
 		if httpConf.SSL.KeyFile == "" {
 			return cerrs.New("https ssl key_file is required")
 		}
-		s.server, err = startHTTPSServer(map[string]string{
-			"cert_file": httpConf.SSL.CertFile,
-			"key_file":  httpConf.SSL.KeyFile,
-		})
+		s.server, listener, err = startHTTPSServer(httpConf.SSL.CertFile, httpConf.SSL.KeyFile)
+		protocol = "https"
 		if err != nil {
 			return err
 		}
 	} else {
-		s.server, err = startHTTPServer()
+		s.server, listener, err = startHTTPServer()
 		if err != nil {
 			return err
 		}
 	}
+	go func() {
+		s.logger.Info(protocol+" server start", zap.String("listen", httpConf.Listen))
+		var serveErr error
+		if protocol == "https" {
+			serveErr = s.server.ServeTLS(listener, "", "")
+		} else {
+			serveErr = s.server.Serve(listener)
+		}
+		if errors.Is(serveErr, http.ErrServerClosed) || errors.Is(serveErr, net.ErrClosed) {
+			serveErr = nil
+		}
+		s.serveErr <- serveErr
+	}()
 	return nil
 }
 
-func (s *HTTPServer) Stop() error {
-	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*5)
-	defer cancel()
-	if s.server != nil {
-		if err := s.server.Shutdown(ctx); err != nil {
-			return err
-		}
+func (s *HTTPServer) Wait() error {
+	return <-s.serveErr
+}
+
+func (s *HTTPServer) Shutdown(ctx context.Context) error {
+	if s.server == nil {
+		return nil
 	}
+	if err := s.server.Shutdown(ctx); err != nil {
+		return errors.Join(err, s.server.Close())
+	}
+	return nil
+}
+
+func newContextLifecycle(cancel context.CancelFunc) *contextLifecycle {
+	return &contextLifecycle{cancel: cancel, done: make(chan struct{})}
+}
+
+func (s *contextLifecycle) Start(context.Context) error { return nil }
+
+func (s *contextLifecycle) Wait() error {
+	<-s.done
+	return nil
+}
+
+func (s *contextLifecycle) Shutdown(context.Context) error {
+	s.once.Do(func() {
+		s.cancel()
+		close(s.done)
+	})
 	return nil
 }
 

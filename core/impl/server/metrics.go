@@ -2,9 +2,9 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
-	"time"
 
 	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
@@ -13,20 +13,22 @@ import (
 )
 
 type MetricsServer struct {
-	config core.IConfig
-	logger core.ILogger
-	server *http.Server
+	config   core.IConfig
+	logger   core.ILogger
+	server   *http.Server
+	serveErr chan error
 }
 
 func NewMetricsServer(config core.IConfig, logger core.ILogger) (*MetricsServer, error) {
 	s := &MetricsServer{
-		config: config,
-		logger: logger,
+		config:   config,
+		logger:   logger,
+		serveErr: make(chan error, 1),
 	}
 	return s, nil
 }
 
-func (s *MetricsServer) Start() error {
+func (s *MetricsServer) Start(context.Context) error {
 	listen := s.config.GetMetrics().Listen
 	httpSrv := &http.Server{
 		Addr:    listen,
@@ -38,22 +40,26 @@ func (s *MetricsServer) Start() error {
 	}
 	go func() {
 		s.logger.Info("metrics server start", zap.String("listen", listen))
-		if listenErr := httpSrv.Serve(listener); listenErr != nil && listenErr != http.ErrServerClosed {
-			s.logger.Error("metrics server start failed", zap.Error(listenErr))
+		serveErr := httpSrv.Serve(listener)
+		if errors.Is(serveErr, http.ErrServerClosed) || errors.Is(serveErr, net.ErrClosed) {
+			serveErr = nil
 		}
+		s.serveErr <- serveErr
 	}()
 	s.server = httpSrv
 	return nil
 }
 
-func (s *MetricsServer) Stop() error {
-	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*5)
-	defer cancel()
+func (s *MetricsServer) Wait() error {
+	return <-s.serveErr
+}
+
+func (s *MetricsServer) Shutdown(ctx context.Context) error {
 	if s.server == nil {
 		return nil
 	}
 	if err := s.server.Shutdown(ctx); err != nil {
-		return err
+		return errors.Join(err, s.server.Close())
 	}
 	return nil
 }

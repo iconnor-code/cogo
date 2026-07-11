@@ -6,11 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/iconnor-code/cogo/cerrs"
-	"github.com/iconnor-code/cogo/client"
 	"github.com/iconnor-code/cogo/core"
-	"github.com/iconnor-code/cogo/core/impl/registry"
 	cogointerceptor "github.com/iconnor-code/cogo/interceptor"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -20,11 +19,19 @@ import (
 
 type managedServer struct {
 	name   string
-	server core.IServer
+	server core.Server
 }
 
 type ServerGroup struct {
-	servers []managedServer
+	servers         []managedServer
+	started         int
+	results         chan serverResult
+	shutdownTimeout time.Duration
+}
+
+type serverResult struct {
+	name string
+	err  error
 }
 
 type GrpcServer struct {
@@ -33,38 +40,39 @@ type GrpcServer struct {
 	listener   net.Listener
 	registry   core.IRegistry
 	baseServer *grpc.Server
+	health     *health.Server
+	serveErr   chan error
 }
+
+type GrpcServerOption func(*GrpcServer) error
 
 type GrpcServiceOption struct {
 	PublicMethods          []string
 	TokenRevocationChecker cogointerceptor.TokenRevocationChecker
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
 	RegisterServices       func(*grpc.Server) error
+	Registry               core.IRegistry
 }
 
-func WithGrpcRegistry(registry core.IRegistry) core.ServerOption {
-	return func(s core.IServer) error {
-		server := s.(*GrpcServer)
+func WithGrpcRegistry(registry core.IRegistry) GrpcServerOption {
+	return func(server *GrpcServer) error {
 		server.registry = registry
 		return nil
 	}
 }
 
-func NewGrpcServer(config core.IConfig, logger core.ILogger, bs *grpc.Server, opts ...core.ServerOption) (*GrpcServer, error) {
+func NewGrpcServer(config core.IConfig, logger core.ILogger, bs *grpc.Server, opts ...GrpcServerOption) (*GrpcServer, error) {
 	s := &GrpcServer{
 		conf:       config,
 		logger:     logger,
 		baseServer: bs,
+		serveErr:   make(chan error, 1),
 	}
 	for _, opt := range opts {
-		opt(s)
+		if err := opt(s); err != nil {
+			return nil, err
+		}
 	}
-	listen := s.conf.GetGRPC().Listen
-	listener, err := net.Listen("tcp", listen)
-	if err != nil {
-		return nil, cerrs.Wrap(err)
-	}
-	s.listener = listener
 	return s, nil
 }
 
@@ -75,65 +83,103 @@ func NewGrpcServiceServer(config core.IConfig, logger core.ILogger, opt GrpcServ
 	if err := registerUnaryServices(baseServer, opt); err != nil {
 		return nil, err
 	}
-	if err := registerHealthServer(baseServer, config); err != nil {
+	healthServer := registerHealthServer(baseServer, config)
+
+	server, err := NewGrpcServer(config, logger, baseServer, WithGrpcRegistry(opt.Registry))
+	if err != nil {
 		return nil, err
 	}
-
-	opts := make([]core.ServerOption, 0, 1)
-	if registryEnabled(config) {
-		reg, err := newConsulRegistry(config, logger)
-		if err != nil {
-			return nil, err
-		}
-		opts = append(opts, WithGrpcRegistry(reg))
-	}
-	return NewGrpcServer(config, logger, baseServer, opts...)
+	server.health = healthServer
+	return server, nil
 }
 
-func (s *GrpcServer) Start() error {
-	go func() {
-		s.logger.Info("grpc server start", zap.String("listen", s.conf.GetGRPC().Listen))
-		err := s.baseServer.Serve(s.listener)
-		if err != nil && !errors.Is(err, grpc.ErrServerStopped) && !errors.Is(err, net.ErrClosed) {
-			s.logger.Error("grpc server failed", zap.Error(err))
+func (s *GrpcServer) Start(ctx context.Context) error {
+	listen := s.conf.GetGRPC().Listen
+	listener := s.listener
+	if listener == nil {
+		var err error
+		listener, err = net.Listen("tcp", listen)
+		if err != nil {
+			return cerrs.Wrap(err)
 		}
+		s.listener = listener
+	}
+
+	go func() {
+		s.logger.Info("grpc server start", zap.String("listen", listen))
+		serveErr := s.baseServer.Serve(listener)
+		if errors.Is(serveErr, grpc.ErrServerStopped) || errors.Is(serveErr, net.ErrClosed) {
+			serveErr = nil
+		}
+		s.serveErr <- serveErr
 	}()
 
 	if s.registry != nil {
-		if err := s.registry.Register(context.Background()); err != nil {
+		if err := s.registry.Register(ctx); err != nil {
 			s.baseServer.Stop()
-			_ = s.listener.Close()
+			_ = listener.Close()
+			<-s.serveErr
 			return cerrs.Wrap(err)
 		}
 	}
 
-	return nil
+	select {
+	case serveErr := <-s.serveErr:
+		if s.registry != nil {
+			_ = s.registry.DeRegister(ctx)
+		}
+		if serveErr == nil {
+			return errors.New("grpc server stopped during startup")
+		}
+		return fmt.Errorf("serve grpc: %w", serveErr)
+	default:
+		return nil
+	}
 }
 
-func (s *GrpcServer) Stop() error {
+func (s *GrpcServer) Wait() error {
+	return <-s.serveErr
+}
+
+func (s *GrpcServer) Shutdown(ctx context.Context) error {
 	var errs error
+	if s.health != nil {
+		s.health.Shutdown()
+	}
 	if s.registry != nil {
-		if err := s.registry.DeRegister(context.Background()); err != nil {
+		if err := s.registry.DeRegister(ctx); err != nil {
 			errs = errors.Join(errs, err)
 		}
 	}
-	s.baseServer.GracefulStop()
+
+	stopped := make(chan struct{})
+	go func() {
+		s.baseServer.GracefulStop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-ctx.Done():
+		s.baseServer.Stop()
+		<-stopped
+		errs = errors.Join(errs, ctx.Err())
+	}
 	return errs
 }
 
-func NewServerGroup(servers ...core.IServer) *ServerGroup {
-	group := &ServerGroup{}
+func NewServerGroup(servers ...core.Server) *ServerGroup {
+	group := &ServerGroup{shutdownTimeout: 10 * time.Second}
 	for _, srv := range servers {
 		group.AddServer("", srv)
 	}
 	return group
 }
 
-func (s *ServerGroup) AddServer(name string, server core.IServer) {
+func (s *ServerGroup) AddServer(name string, server core.Server) {
 	s.servers = append(s.servers, managedServer{name: name, server: server})
 }
 
-func NewGrpcServerGroup[T core.IServer](
+func NewGrpcServerGroup[T core.Server](
 	config core.IConfig,
 	logger core.ILogger,
 	newGrpcServer func(core.IConfig, core.ILogger) (T, error),
@@ -151,24 +197,56 @@ func NewGrpcServerGroup[T core.IServer](
 	return group, nil
 }
 
-func (s *ServerGroup) Start() error {
+func (s *ServerGroup) Start(ctx context.Context) error {
+	s.results = make(chan serverResult, len(s.servers))
+	s.started = 0
 	for i, srv := range s.servers {
-		if err := srv.server.Start(); err != nil {
-			_ = s.stopStarted(i - 1)
-			return fmt.Errorf("start %s server: %w", srv.name, err)
+		if err := srv.server.Start(ctx); err != nil {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
+			defer cancel()
+			shutdownErr := s.shutdownStarted(shutdownCtx, i-1)
+			return errors.Join(fmt.Errorf("start %s server: %w", srv.name, err), shutdownErr)
 		}
+		s.started++
+		go func(srv managedServer) {
+			s.results <- serverResult{name: srv.name, err: srv.server.Wait()}
+		}(srv)
 	}
 	return nil
 }
 
-func (s *ServerGroup) Stop() error {
-	return s.stopStarted(len(s.servers) - 1)
+func (s *ServerGroup) Run(ctx context.Context) error {
+	if err := s.Start(ctx); err != nil {
+		return err
+	}
+
+	var runErr error
+	select {
+	case <-ctx.Done():
+		if !errors.Is(ctx.Err(), context.Canceled) {
+			runErr = ctx.Err()
+		}
+	case result := <-s.results:
+		if result.err == nil {
+			runErr = fmt.Errorf("%s server stopped unexpectedly", result.name)
+		} else {
+			runErr = fmt.Errorf("%s server failed: %w", result.name, result.err)
+		}
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
+	defer cancel()
+	return errors.Join(runErr, s.Shutdown(shutdownCtx))
 }
 
-func (s *ServerGroup) stopStarted(last int) error {
+func (s *ServerGroup) Shutdown(ctx context.Context) error {
+	return s.shutdownStarted(ctx, s.started-1)
+}
+
+func (s *ServerGroup) shutdownStarted(ctx context.Context, last int) error {
 	var errs error
 	for i := last; i >= 0; i-- {
-		if err := s.servers[i].server.Stop(); err != nil {
+		if err := s.servers[i].server.Shutdown(ctx); err != nil {
 			errs = errors.Join(errs, fmt.Errorf("stop %s server: %w", s.servers[i].name, err))
 		}
 	}
@@ -206,29 +284,13 @@ func registerUnaryServices(baseServer *grpc.Server, opt GrpcServiceOption) error
 	return opt.RegisterServices(baseServer)
 }
 
-func registerHealthServer(baseServer *grpc.Server, config core.IConfig) error {
+func registerHealthServer(baseServer *grpc.Server, config core.IConfig) *health.Server {
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(baseServer, healthServer)
 
 	healthServer.SetServingStatus(config.GetRegistry().Name, grpc_health_v1.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
-	return nil
-}
-
-func newConsulRegistry(config core.IConfig, logger core.ILogger) (core.IRegistry, error) {
-	consul, err := client.NewConsul(config)
-	if err != nil {
-		return nil, err
-	}
-	return registry.NewRegistry(config, logger, registry.WithConsulClient(consul))
-}
-
-func registryEnabled(config core.IConfig) bool {
-	registryConf := config.GetRegistry()
-	return config.GetConsul().Address != "" &&
-		registryConf.Name != "" &&
-		registryConf.Address != "" &&
-		registryConf.Port != 0
+	return healthServer
 }
 
 func metricsEnabled(config core.IConfig) bool {

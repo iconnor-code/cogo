@@ -23,23 +23,40 @@ type Registry struct {
 	leaseID     clientv3.LeaseID
 }
 
-func NewRegistry(conf core.IConfig, logger core.ILogger, opts ...core.RegistryOption) (*Registry, error) {
+type Option func(*Registry) error
+
+func NewRegistry(conf core.IConfig, logger core.ILogger, opts ...Option) (*Registry, error) {
 	registry := &Registry{
 		logger: logger,
 		config: conf,
 	}
 	for _, opt := range opts {
-		optErr := opt(registry)
-		if optErr != nil {
-			return nil, optErr
+		if err := opt(registry); err != nil {
+			return nil, err
 		}
 	}
 	return registry, nil
 }
 
+// NewDefault builds the registry selected by the framework's current default
+// policy. Keeping this policy in the registry package lets transport servers
+// accept any IRegistry implementation without knowing how it is constructed.
+func NewDefault(conf core.IConfig, logger core.ILogger) (core.IRegistry, error) {
+	registryConf := conf.GetRegistry()
+	if conf.GetConsul().Address == "" || registryConf.Name == "" ||
+		registryConf.Address == "" || registryConf.Port == 0 {
+		return nil, nil
+	}
+	consul, err := client.NewConsul(conf)
+	if err != nil {
+		return nil, err
+	}
+	return NewRegistry(conf, logger, WithConsulClient(consul))
+}
+
 func (r *Registry) Register(ctx context.Context) error {
 	if r.consulClient != nil {
-		return r.consulRegister()
+		return r.consulRegister(ctx)
 	}
 	if r.etcdClient != nil {
 		return r.etcdRegister(ctx)
@@ -49,7 +66,7 @@ func (r *Registry) Register(ctx context.Context) error {
 
 func (r *Registry) DeRegister(ctx context.Context) error {
 	if r.consulClient != nil {
-		return r.consulDeRegister()
+		return r.consulDeRegister(ctx)
 	}
 	if r.etcdClient != nil {
 		return r.etcdDeRegister(ctx)

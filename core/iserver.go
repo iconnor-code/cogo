@@ -1,12 +1,11 @@
 package core
 
-// import "google.golang.org/grpc"
+import "context"
 
-type ServerOption func(IServer) error
-
-// type GrpcRegistar func(*grpc.Server, any)
-
-type IServer interface {
-	Start() error
-	Stop() error
+// Server is a long-running process component whose startup, runtime, and
+// shutdown failures are observable by its owner.
+type Server interface {
+	Start(context.Context) error
+	Wait() error
+	Shutdown(context.Context) error
 }

@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"errors"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -31,22 +33,43 @@ type testRegistry struct {
 }
 
 type testServer struct {
-	started bool
-	stopped bool
-	err     error
+	started     bool
+	stopped     bool
+	startErr    error
+	waitErr     error
+	shutdownErr error
+	done        chan struct{}
+	once        sync.Once
 }
 
-func (s *testServer) Start() error {
-	if s.err != nil {
-		return s.err
+func (s *testServer) Start(context.Context) error {
+	if s.startErr != nil {
+		return s.startErr
+	}
+	if s.done == nil {
+		s.done = make(chan struct{})
 	}
 	s.started = true
+	if s.waitErr != nil {
+		s.once.Do(func() { close(s.done) })
+	}
 	return nil
 }
 
-func (s *testServer) Stop() error {
+func (s *testServer) Wait() error {
+	<-s.done
+	return s.waitErr
+}
+
+func (s *testServer) Shutdown(context.Context) error {
 	s.stopped = true
-	return nil
+	s.once.Do(func() {
+		if s.done == nil {
+			s.done = make(chan struct{})
+		}
+		close(s.done)
+	})
+	return s.shutdownErr
 }
 
 func (r *testRegistry) Register(context.Context) error {
@@ -63,13 +86,24 @@ func TestGrpcServerStartClosesListenerWhenRegistrationFails(t *testing.T) {
 		listener:   listener,
 		registry:   registry,
 		baseServer: grpc.NewServer(),
+		serveErr:   make(chan error, 1),
 	}
 
-	if err := s.Start(); err == nil {
+	if err := s.Start(context.Background()); err == nil {
 		t.Fatal("expected registration error")
 	}
-	if _, err := listener.Accept(); err == nil {
+	if _, err := s.listener.Accept(); err == nil {
 		t.Fatal("expected listener to be closed")
+	}
+}
+
+func TestNewGrpcServerReturnsOptionError(t *testing.T) {
+	wantErr := errors.New("invalid option")
+	_, err := NewGrpcServer(&cogoconfig.Config{}, &testLogger{}, grpc.NewServer(), func(*GrpcServer) error {
+		return wantErr
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected option error, got %v", err)
 	}
 }
 
@@ -86,10 +120,11 @@ func TestGrpcServerStopStillStopsWhenDeregisterFails(t *testing.T) {
 		listener:   listener,
 		registry:   &testRegistry{deregisterErr: errors.New("deregister failed")},
 		baseServer: grpc.NewServer(),
+		serveErr:   make(chan error, 1),
 	}
 	go func() { _ = s.baseServer.Serve(listener) }()
 
-	if err := s.Stop(); err == nil {
+	if err := s.Shutdown(context.Background()); err == nil {
 		t.Fatal("expected deregistration error")
 	}
 	if _, err := listener.Accept(); err == nil {
@@ -105,8 +140,25 @@ func TestHTTPServerStartReturnsListenError(t *testing.T) {
 		t.Fatalf("new http server: %v", err)
 	}
 
-	if err := s.Start(); err == nil {
+	if err := s.Start(context.Background()); err == nil {
 		t.Fatalf("expected listen error")
+	}
+}
+
+func TestHTTPServerStartValidatesTLSCertificate(t *testing.T) {
+	s, err := NewHTTPServer(&cogoconfig.Config{Config: core.Config{HTTP: core.HTTPConfig{
+		Listen: "127.0.0.1:0",
+		SSL: core.HTTPSSLConfig{
+			CertFile: "missing-cert.pem",
+			KeyFile:  "missing-key.pem",
+		},
+	}}}, &testLogger{}, runtime.NewServeMux())
+	if err != nil {
+		t.Fatalf("new http server: %v", err)
+	}
+
+	if err := s.Start(context.Background()); err == nil {
+		t.Fatal("expected TLS certificate error during startup")
 	}
 }
 
@@ -118,7 +170,7 @@ func TestMetricsServerStartReturnsListenError(t *testing.T) {
 		t.Fatalf("new metrics server: %v", err)
 	}
 
-	if err := s.Start(); err == nil {
+	if err := s.Start(context.Background()); err == nil {
 		t.Fatalf("expected listen error")
 	}
 }
@@ -131,53 +183,35 @@ func TestMetricsServerStopBeforeStartIsNoop(t *testing.T) {
 		t.Fatalf("new metrics server: %v", err)
 	}
 
-	if err := s.Stop(); err != nil {
+	if err := s.Shutdown(context.Background()); err != nil {
 		t.Fatalf("unexpected stop error: %v", err)
 	}
 }
 
 func TestGrpcServerStartStopRegistersAndDeregisters(t *testing.T) {
 	registry := &testRegistry{}
+	listener := bufconn.Listen(1024)
 	s := &GrpcServer{
 		conf:       &cogoconfig.Config{Config: core.Config{GRPC: core.GRPCConfig{Listen: "bufconn"}}},
 		logger:     &testLogger{},
-		listener:   bufconn.Listen(1024),
+		listener:   listener,
 		registry:   registry,
 		baseServer: grpc.NewServer(),
+		serveErr:   make(chan error, 1),
 	}
 
-	if err := s.Start(); err != nil {
+	if err := s.Start(context.Background()); err != nil {
 		t.Fatalf("start grpc server: %v", err)
 	}
 	if !registry.registered {
 		t.Fatalf("expected registry.Register to be called")
 	}
 
-	if err := s.Stop(); err != nil {
+	if err := s.Shutdown(context.Background()); err != nil {
 		t.Fatalf("stop grpc server: %v", err)
 	}
 	if !registry.deregistered {
 		t.Fatalf("expected registry.DeRegister to be called")
-	}
-}
-
-func TestRegistryEnabledRequiresCompleteConfig(t *testing.T) {
-	if registryEnabled(&cogoconfig.Config{}) {
-		t.Fatalf("expected registry to be disabled when config is empty")
-	}
-
-	config := &cogoconfig.Config{
-		Config: core.Config{
-			Consul: core.ConsulConfig{Address: "127.0.0.1:8500"},
-			Registry: core.RegistryConfig{
-				Name:    "account",
-				Address: "127.0.0.1",
-				Port:    10000,
-			},
-		},
-	}
-	if !registryEnabled(config) {
-		t.Fatalf("expected registry to be enabled when config is complete")
 	}
 }
 
@@ -207,12 +241,12 @@ func TestGRPCEndpointFallsBackToListen(t *testing.T) {
 
 func TestServerGroupStopsStartedServersOnStartError(t *testing.T) {
 	first := &testServer{}
-	second := &testServer{err: errors.New("boom")}
+	second := &testServer{startErr: errors.New("boom")}
 	group := NewServerGroup()
 	group.AddServer("first", first)
 	group.AddServer("second", second)
 
-	if err := group.Start(); err == nil {
+	if err := group.Start(context.Background()); err == nil {
 		t.Fatalf("expected start error")
 	}
 	if !first.started {
@@ -223,6 +257,20 @@ func TestServerGroupStopsStartedServersOnStartError(t *testing.T) {
 	}
 	if second.started {
 		t.Fatalf("second server should not be marked started")
+	}
+}
+
+func TestServerGroupRunReturnsRuntimeFailureAndStopsPeers(t *testing.T) {
+	failed := &testServer{waitErr: errors.New("serve failed")}
+	peer := &testServer{}
+	group := NewServerGroup(failed, peer)
+
+	err := group.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "serve failed") {
+		t.Fatalf("expected runtime failure, got %v", err)
+	}
+	if !peer.stopped {
+		t.Fatal("expected peer server to be stopped after runtime failure")
 	}
 }
 
@@ -249,6 +297,36 @@ func TestNewGrpcServerGroupAddsMetricsOnlyWhenEnabled(t *testing.T) {
 	}
 	if len(group.servers) != 2 {
 		t.Fatalf("expected two servers when metrics enabled, got %d", len(group.servers))
+	}
+}
+
+func TestHTTPGatewayGroupOwnsGatewayContext(t *testing.T) {
+	var gatewayCtx context.Context
+	group, err := NewHTTPGatewayServerGroup(
+		&cogoconfig.Config{},
+		&testLogger{},
+		func(core.IConfig, core.ILogger) (*testServer, error) { return &testServer{}, nil },
+		func(ctx context.Context, _ core.IConfig) (*runtime.ServeMux, error) {
+			gatewayCtx = ctx
+			return runtime.NewServeMux(), nil
+		},
+		SwaggerOption{},
+	)
+	if err != nil {
+		t.Fatalf("new gateway group: %v", err)
+	}
+
+	lifecycle := group.servers[1].server
+	if err := lifecycle.Start(context.Background()); err != nil {
+		t.Fatalf("start gateway lifecycle: %v", err)
+	}
+	if err := lifecycle.Shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown gateway lifecycle: %v", err)
+	}
+	select {
+	case <-gatewayCtx.Done():
+	default:
+		t.Fatal("expected gateway context to be canceled")
 	}
 }
 
