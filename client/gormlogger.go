@@ -43,6 +43,12 @@ func (l *GormZapLogger) Error(ctx context.Context, msg string, data ...any) {
 	l.logger.Error(fmt.Sprintf(msg, data...))
 }
 
+// ParamsFilter keeps SQL structure observable without writing query parameters
+// such as passwords, verification codes, and tokens to logs.
+func (l *GormZapLogger) ParamsFilter(_ context.Context, sql string, _ ...any) (string, []any) {
+	return sql, nil
+}
+
 func (l *GormZapLogger) Trace(ctx context.Context, begin time.Time, fc func() (sql string, rowsAffected int64), err error) {
 	elapsed := time.Since(begin)
 	sql, rows := fc()
