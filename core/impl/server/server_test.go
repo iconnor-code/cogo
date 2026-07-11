@@ -114,15 +114,18 @@ func (r *testRegistry) DeRegister(context.Context) error {
 
 func TestGrpcServerStopStillStopsWhenDeregisterFails(t *testing.T) {
 	listener := bufconn.Listen(1024)
+	registry := &testRegistry{deregisterErr: errors.New("deregister failed")}
 	s := &GrpcServer{
 		conf:       &cogoconfig.Config{Config: core.Config{GRPC: core.GRPCConfig{Listen: "bufconn"}}},
 		logger:     &testLogger{},
 		listener:   listener,
-		registry:   &testRegistry{deregisterErr: errors.New("deregister failed")},
+		registry:   registry,
 		baseServer: grpc.NewServer(),
 		serveErr:   make(chan error, 1),
 	}
-	go func() { _ = s.baseServer.Serve(listener) }()
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("start grpc server: %v", err)
+	}
 
 	if err := s.Shutdown(context.Background()); err == nil {
 		t.Fatal("expected deregistration error")
@@ -246,7 +249,7 @@ func TestServerGroupStopsStartedServersOnStartError(t *testing.T) {
 	group.AddServer("first", first)
 	group.AddServer("second", second)
 
-	if err := group.Start(context.Background()); err == nil {
+	if err := group.start(context.Background()); err == nil {
 		t.Fatalf("expected start error")
 	}
 	if !first.started {
@@ -300,12 +303,13 @@ func TestNewGrpcServerGroupAddsMetricsOnlyWhenEnabled(t *testing.T) {
 	}
 }
 
-func TestHTTPGatewayGroupOwnsGatewayContext(t *testing.T) {
+func TestHTTPGatewayGroupCreatesResourcesLazilyAndCleansUpStartFailure(t *testing.T) {
 	var gatewayCtx context.Context
+	grpcServer := &testServer{}
 	group, err := NewHTTPGatewayServerGroup(
-		&cogoconfig.Config{},
+		&cogoconfig.Config{Config: core.Config{HTTP: core.HTTPConfig{Listen: "invalid-address"}}},
 		&testLogger{},
-		func(core.IConfig, core.ILogger) (*testServer, error) { return &testServer{}, nil },
+		func(core.IConfig, core.ILogger) (*testServer, error) { return grpcServer, nil },
 		func(ctx context.Context, _ core.IConfig) (*runtime.ServeMux, error) {
 			gatewayCtx = ctx
 			return runtime.NewServeMux(), nil
@@ -315,18 +319,38 @@ func TestHTTPGatewayGroupOwnsGatewayContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new gateway group: %v", err)
 	}
-
-	lifecycle := group.servers[1].server
-	if err := lifecycle.Start(context.Background()); err != nil {
-		t.Fatalf("start gateway lifecycle: %v", err)
+	if gatewayCtx != nil {
+		t.Fatal("gateway resources must not be created by the group constructor")
 	}
-	if err := lifecycle.Shutdown(context.Background()); err != nil {
-		t.Fatalf("shutdown gateway lifecycle: %v", err)
+	if err := group.start(context.Background()); err == nil {
+		t.Fatal("expected HTTP listen error")
+	}
+	if gatewayCtx == nil {
+		t.Fatal("expected gateway resources to be created during start")
 	}
 	select {
 	case <-gatewayCtx.Done():
 	default:
 		t.Fatal("expected gateway context to be canceled")
+	}
+	if !grpcServer.stopped {
+		t.Fatal("expected grpc server rollback after gateway start failure")
+	}
+}
+
+func TestServerLifecycleRejectsInvalidCallOrder(t *testing.T) {
+	s, err := NewMetricsServer(&cogoconfig.Config{}, &testLogger{})
+	if err != nil {
+		t.Fatalf("new metrics server: %v", err)
+	}
+	if err := s.Wait(); !errors.Is(err, ErrServerNotStarted) {
+		t.Fatalf("wait before start: got %v, want %v", err, ErrServerNotStarted)
+	}
+	if err := s.Start(context.Background()); err == nil {
+		t.Fatal("expected missing listen address error")
+	}
+	if err := s.Start(context.Background()); !errors.Is(err, ErrServerAlreadyStarted) {
+		t.Fatalf("second start: got %v, want %v", err, ErrServerAlreadyStarted)
 	}
 }
 

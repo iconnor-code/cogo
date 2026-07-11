@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/iconnor-code/cogo/cerrs"
@@ -42,6 +43,7 @@ type GrpcServer struct {
 	baseServer *grpc.Server
 	health     *health.Server
 	serveErr   chan error
+	lifecycle  componentLifecycle
 }
 
 type GrpcServerOption func(*GrpcServer) error
@@ -93,8 +95,20 @@ func NewGrpcServiceServer(config core.IConfig, logger core.ILogger, opt GrpcServ
 	return server, nil
 }
 
-func (s *GrpcServer) Start(ctx context.Context) error {
+func (s *GrpcServer) Start(ctx context.Context) (err error) {
+	if err := s.lifecycle.beginStart(); err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			s.lifecycle.markStartFailed()
+		}
+	}()
+
 	listen := s.conf.GetGRPC().Listen
+	if strings.TrimSpace(listen) == "" {
+		return errors.New("grpc listen address is required")
+	}
 	listener := s.listener
 	if listener == nil {
 		var err error
@@ -133,15 +147,25 @@ func (s *GrpcServer) Start(ctx context.Context) error {
 		}
 		return fmt.Errorf("serve grpc: %w", serveErr)
 	default:
+		s.lifecycle.markStarted()
 		return nil
 	}
 }
 
 func (s *GrpcServer) Wait() error {
+	if err := s.lifecycle.claimWait(); err != nil {
+		return err
+	}
 	return <-s.serveErr
 }
 
 func (s *GrpcServer) Shutdown(ctx context.Context) error {
+	shutdown, err := s.lifecycle.beginShutdown()
+	if err != nil || !shutdown {
+		return err
+	}
+	defer s.lifecycle.markStopped()
+
 	var errs error
 	if s.health != nil {
 		s.health.Shutdown()
@@ -197,7 +221,7 @@ func NewGrpcServerGroup[T core.Server](
 	return group, nil
 }
 
-func (s *ServerGroup) Start(ctx context.Context) error {
+func (s *ServerGroup) start(ctx context.Context) error {
 	s.results = make(chan serverResult, len(s.servers))
 	s.started = 0
 	for i, srv := range s.servers {
@@ -216,7 +240,7 @@ func (s *ServerGroup) Start(ctx context.Context) error {
 }
 
 func (s *ServerGroup) Run(ctx context.Context) error {
-	if err := s.Start(ctx); err != nil {
+	if err := s.start(ctx); err != nil {
 		return err
 	}
 
@@ -236,10 +260,10 @@ func (s *ServerGroup) Run(ctx context.Context) error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
 	defer cancel()
-	return errors.Join(runErr, s.Shutdown(shutdownCtx))
+	return errors.Join(runErr, s.shutdown(shutdownCtx))
 }
 
-func (s *ServerGroup) Shutdown(ctx context.Context) error {
+func (s *ServerGroup) shutdown(ctx context.Context) error {
 	return s.shutdownStarted(ctx, s.started-1)
 }
 

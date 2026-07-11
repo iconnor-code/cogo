@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/core"
@@ -13,10 +14,11 @@ import (
 )
 
 type MetricsServer struct {
-	config   core.IConfig
-	logger   core.ILogger
-	server   *http.Server
-	serveErr chan error
+	config    core.IConfig
+	logger    core.ILogger
+	server    *http.Server
+	serveErr  chan error
+	lifecycle componentLifecycle
 }
 
 func NewMetricsServer(config core.IConfig, logger core.ILogger) (*MetricsServer, error) {
@@ -28,11 +30,25 @@ func NewMetricsServer(config core.IConfig, logger core.ILogger) (*MetricsServer,
 	return s, nil
 }
 
-func (s *MetricsServer) Start(context.Context) error {
+func (s *MetricsServer) Start(context.Context) (err error) {
+	if err := s.lifecycle.beginStart(); err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			s.lifecycle.markStartFailed()
+		}
+	}()
+
 	listen := s.config.GetMetrics().Listen
+	if strings.TrimSpace(listen) == "" {
+		return errors.New("metrics listen address is required")
+	}
 	httpSrv := &http.Server{
-		Addr:    listen,
-		Handler: promhttp.Handler(),
+		Addr:              listen,
+		Handler:           promhttp.Handler(),
+		ReadHeaderTimeout: defaultReadHeaderTimeout,
+		IdleTimeout:       defaultIdleTimeout,
 	}
 	listener, err := net.Listen("tcp", httpSrv.Addr)
 	if err != nil {
@@ -47,17 +63,23 @@ func (s *MetricsServer) Start(context.Context) error {
 		s.serveErr <- serveErr
 	}()
 	s.server = httpSrv
+	s.lifecycle.markStarted()
 	return nil
 }
 
 func (s *MetricsServer) Wait() error {
+	if err := s.lifecycle.claimWait(); err != nil {
+		return err
+	}
 	return <-s.serveErr
 }
 
 func (s *MetricsServer) Shutdown(ctx context.Context) error {
-	if s.server == nil {
-		return nil
+	shutdown, err := s.lifecycle.beginShutdown()
+	if err != nil || !shutdown {
+		return err
 	}
+	defer s.lifecycle.markStopped()
 	if err := s.server.Shutdown(ctx); err != nil {
 		return errors.Join(err, s.server.Close())
 	}

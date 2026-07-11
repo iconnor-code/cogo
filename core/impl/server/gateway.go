@@ -8,7 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/iconnor-code/cogo/cerrs"
@@ -22,18 +22,28 @@ import (
 type GatewayRegister func(context.Context, *runtime.ServeMux, string, []grpc.DialOption) error
 type GatewayMuxFactory func(context.Context, core.IConfig) (*runtime.ServeMux, error)
 
+const (
+	defaultReadHeaderTimeout = 5 * time.Second
+	defaultIdleTimeout       = 60 * time.Second
+)
+
 type HTTPServer struct {
-	config   core.IConfig
-	logger   core.ILogger
-	handler  http.Handler
-	server   *http.Server
-	serveErr chan error
+	config    core.IConfig
+	logger    core.ILogger
+	handler   http.Handler
+	server    *http.Server
+	serveErr  chan error
+	lifecycle componentLifecycle
 }
 
-type contextLifecycle struct {
-	cancel context.CancelFunc
-	done   chan struct{}
-	once   sync.Once
+type gatewayHTTPServer struct {
+	config        core.IConfig
+	logger        core.ILogger
+	newGatewayMux GatewayMuxFactory
+	swagger       SwaggerOption
+	server        *HTTPServer
+	cancel        context.CancelFunc
+	lifecycle     componentLifecycle
 }
 
 func NewHTTPServer(config core.IConfig, logger core.ILogger, handler *runtime.ServeMux) (*HTTPServer, error) {
@@ -62,25 +72,15 @@ func NewHTTPGatewayServerGroup[T core.Server](
 		return nil, fmt.Errorf("init grpc server: %w", err)
 	}
 
-	gatewayCtx, cancelGateway := context.WithCancel(context.Background())
-	mux, err := newGatewayMux(gatewayCtx, config)
-	if err != nil {
-		cancelGateway()
-		return nil, fmt.Errorf("init grpc gateway: %w", err)
-	}
-	handler := NewSwaggerHandler(mux, swaggerOption)
-	httpServer, err := NewHTTPServerWithHandler(config, logger, handler)
-	if err != nil {
-		cancelGateway()
-		return nil, fmt.Errorf("init http server: %w", err)
-	}
-
 	group := NewServerGroup()
 	group.AddServer("grpc", grpcServer)
-	group.AddServer("gateway", newContextLifecycle(cancelGateway))
-	group.AddServer("http", httpServer)
+	group.AddServer("http", &gatewayHTTPServer{
+		config:        config,
+		logger:        logger,
+		newGatewayMux: newGatewayMux,
+		swagger:       swaggerOption,
+	})
 	if err := addMetricsServer(config, logger, group); err != nil {
-		cancelGateway()
 		return nil, err
 	}
 	return group, nil
@@ -117,12 +117,28 @@ func incomingHeaderMatcher(header string) (string, bool) {
 	return runtime.DefaultHeaderMatcher(header)
 }
 
-func (s *HTTPServer) Start(context.Context) error {
+func (s *HTTPServer) Start(context.Context) (err error) {
+	if err := s.lifecycle.beginStart(); err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			s.lifecycle.markStartFailed()
+		}
+	}()
+
+	httpConf := s.config.GetHTTP()
+	if strings.TrimSpace(httpConf.Listen) == "" {
+		return errors.New("http listen address is required")
+	}
+
 	startHTTPServer := func() (*http.Server, net.Listener, error) {
-		listen := s.config.GetHTTP().Listen
+		listen := httpConf.Listen
 		httpSrv := &http.Server{
-			Handler: s.handler,
-			Addr:    listen,
+			Handler:           s.handler,
+			Addr:              listen,
+			ReadHeaderTimeout: defaultReadHeaderTimeout,
+			IdleTimeout:       defaultIdleTimeout,
 		}
 		listener, err := net.Listen("tcp", httpSrv.Addr)
 		if err != nil {
@@ -136,10 +152,12 @@ func (s *HTTPServer) Start(context.Context) error {
 		if err != nil {
 			return nil, nil, cerrs.Wrap(err)
 		}
-		listen := s.config.GetHTTP().Listen
+		listen := httpConf.Listen
 		httpsSrv := &http.Server{
-			Handler: s.handler,
-			Addr:    listen,
+			Handler:           s.handler,
+			Addr:              listen,
+			ReadHeaderTimeout: defaultReadHeaderTimeout,
+			IdleTimeout:       defaultIdleTimeout,
 			TLSConfig: &tls.Config{
 				Certificates: []tls.Certificate{certificate},
 				MinVersion:   tls.VersionTLS12,
@@ -153,11 +171,9 @@ func (s *HTTPServer) Start(context.Context) error {
 	}
 
 	var (
-		err      error
 		listener net.Listener
 		protocol = "http"
 	)
-	httpConf := s.config.GetHTTP()
 	if httpConf.SSL.CertFile != "" || httpConf.SSL.KeyFile != "" {
 		if httpConf.SSL.CertFile == "" {
 			return cerrs.New("https ssl cert_file is required")
@@ -189,40 +205,79 @@ func (s *HTTPServer) Start(context.Context) error {
 		}
 		s.serveErr <- serveErr
 	}()
+	s.lifecycle.markStarted()
 	return nil
 }
 
 func (s *HTTPServer) Wait() error {
+	if err := s.lifecycle.claimWait(); err != nil {
+		return err
+	}
 	return <-s.serveErr
 }
 
 func (s *HTTPServer) Shutdown(ctx context.Context) error {
-	if s.server == nil {
-		return nil
+	shutdown, err := s.lifecycle.beginShutdown()
+	if err != nil || !shutdown {
+		return err
 	}
+	defer s.lifecycle.markStopped()
 	if err := s.server.Shutdown(ctx); err != nil {
 		return errors.Join(err, s.server.Close())
 	}
 	return nil
 }
 
-func newContextLifecycle(cancel context.CancelFunc) *contextLifecycle {
-	return &contextLifecycle{cancel: cancel, done: make(chan struct{})}
-}
+func (s *gatewayHTTPServer) Start(ctx context.Context) (err error) {
+	if err := s.lifecycle.beginStart(); err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			s.lifecycle.markStartFailed()
+		}
+	}()
 
-func (s *contextLifecycle) Start(context.Context) error { return nil }
+	gatewayCtx, cancel := context.WithCancel(context.Background())
+	mux, err := s.newGatewayMux(gatewayCtx, s.config)
+	if err != nil {
+		cancel()
+		return fmt.Errorf("init grpc gateway: %w", err)
+	}
 
-func (s *contextLifecycle) Wait() error {
-	<-s.done
+	httpServer, err := NewHTTPServerWithHandler(s.config, s.logger, NewSwaggerHandler(mux, s.swagger))
+	if err != nil {
+		cancel()
+		return fmt.Errorf("init http server: %w", err)
+	}
+	if err := httpServer.Start(ctx); err != nil {
+		cancel()
+		return err
+	}
+
+	s.server = httpServer
+	s.cancel = cancel
+	s.lifecycle.markStarted()
 	return nil
 }
 
-func (s *contextLifecycle) Shutdown(context.Context) error {
-	s.once.Do(func() {
-		s.cancel()
-		close(s.done)
-	})
-	return nil
+func (s *gatewayHTTPServer) Wait() error {
+	if err := s.lifecycle.claimWait(); err != nil {
+		return err
+	}
+	return s.server.Wait()
+}
+
+func (s *gatewayHTTPServer) Shutdown(ctx context.Context) error {
+	shutdown, err := s.lifecycle.beginShutdown()
+	if err != nil || !shutdown {
+		return err
+	}
+	defer s.lifecycle.markStopped()
+
+	err = s.server.Shutdown(ctx)
+	s.cancel()
+	return err
 }
 
 func GRPCEndpoint(config core.IConfig) (string, error) {

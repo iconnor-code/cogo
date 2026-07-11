@@ -4,6 +4,8 @@ package registry
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/iconnor-code/cogo/cerrs"
 	"github.com/iconnor-code/cogo/client"
@@ -43,15 +45,40 @@ func NewRegistry(conf core.IConfig, logger core.ILogger, opts ...Option) (*Regis
 // accept any IRegistry implementation without knowing how it is constructed.
 func NewDefault(conf core.IConfig, logger core.ILogger) (core.IRegistry, error) {
 	registryConf := conf.GetRegistry()
-	if conf.GetConsul().Address == "" || registryConf.Name == "" ||
-		registryConf.Address == "" || registryConf.Port == 0 {
+	if strings.TrimSpace(conf.GetConsul().Address) == "" {
 		return nil, nil
+	}
+	if strings.TrimSpace(registryConf.Name) == "" {
+		return nil, cerrs.New("registry name is required when consul is configured")
+	}
+	if strings.TrimSpace(registryConf.Address) == "" {
+		return nil, cerrs.New("registry address is required when consul is configured")
+	}
+	if registryConf.Port <= 0 || registryConf.Port > 65535 {
+		return nil, cerrs.New("registry port must be between 1 and 65535 when consul is configured")
+	}
+	if err := validatePositiveDuration("registry health check interval", registryConf.HealthCheck.Interval); err != nil {
+		return nil, err
+	}
+	if err := validatePositiveDuration("registry health check timeout", registryConf.HealthCheck.Timeout); err != nil {
+		return nil, err
 	}
 	consul, err := client.NewConsul(conf)
 	if err != nil {
 		return nil, err
 	}
 	return NewRegistry(conf, logger, WithConsulClient(consul))
+}
+
+func validatePositiveDuration(name, value string) error {
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return fmt.Errorf("%s is invalid: %w", name, err)
+	}
+	if duration <= 0 {
+		return fmt.Errorf("%s must be positive", name)
+	}
+	return nil
 }
 
 func (r *Registry) Register(ctx context.Context) error {
