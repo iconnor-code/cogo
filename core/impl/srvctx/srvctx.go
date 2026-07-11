@@ -1,0 +1,105 @@
+package srvctx
+
+import (
+	"sync"
+
+	"github.com/iconnor-code/cogo/core"
+)
+
+type BizInfo struct {
+	OriginalBizID   []int32  `json:"original_biz_id"`
+	OriginalBizName []string `json:"original_biz_name"`
+	BizID           int32    `json:"biz_id"`
+	BizName         string   `json:"biz_name"`
+}
+
+func (b *BizInfo) GetCallerBizID() int32 {
+	if len(b.OriginalBizID) == 0 {
+		return 0
+	}
+	return b.OriginalBizID[len(b.OriginalBizID)-1]
+}
+func (b *BizInfo) GetCallerBizName() string {
+	if len(b.OriginalBizName) == 0 {
+		return ""
+	}
+	return b.OriginalBizName[len(b.OriginalBizName)-1]
+}
+func (b *BizInfo) GetBizID() int32 {
+	return b.BizID
+}
+func (b *BizInfo) GetBizName() string {
+	return b.BizName
+}
+
+type UserInfo struct {
+	UserID    uint32 `json:"user_id"`
+	UserEmail string `json:"user_email"`
+	IsAdmin   bool   `json:"is_admin"`
+}
+
+func (u *UserInfo) GetUserID() uint32 {
+	return u.UserID
+}
+func (u *UserInfo) GetUserName() string {
+	return u.UserEmail
+}
+func (u *UserInfo) GetIsAdmin() bool {
+	return u.IsAdmin
+}
+
+type SrvCtx struct {
+	mu       sync.RWMutex
+	logger   core.ILogger
+	bizInfo  core.IBizInfo
+	userInfo core.IUserInfo
+	ext      map[core.SrvCtxKey]any
+}
+
+func NewSrvCtx(logger core.ILogger) *SrvCtx {
+	return &SrvCtx{
+		logger: logger,
+		ext:    make(map[core.SrvCtxKey]any),
+	}
+}
+
+func (s *SrvCtx) Logger() core.ILogger {
+	return s.logger
+}
+
+func (s *SrvCtx) SetField(key core.SrvCtxKey, value any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ext[key] = value
+}
+
+func (s *SrvCtx) GetField(key core.SrvCtxKey) (any, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	res, ok := s.ext[key]
+	return res, ok
+}
+
+func (s *SrvCtx) SetBizInfo(bizInfo core.IBizInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.bizInfo = bizInfo
+}
+
+func (s *SrvCtx) GetBizInfo() core.IBizInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.bizInfo
+}
+
+func (s *SrvCtx) SetUserInfo(userInfo core.IUserInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.userInfo = userInfo
+}
+
+func (s *SrvCtx) GetUserInfo() core.IUserInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.userInfo
+}

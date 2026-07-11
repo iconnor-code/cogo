@@ -1,0 +1,9 @@
+{
+  "go.toolsEnvVars": {
+    "GOCACHE": "/tmp/mysite-go-build-cache"
+  },
+  "go.testEnvVars": {
+    "GOCACHE": "/tmp/mysite-go-build-cache"
+  },
+  "makefile.configureOnOpen": false
+}

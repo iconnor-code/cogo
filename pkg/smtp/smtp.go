@@ -1,55 +1,49 @@
+// Package smtp
 package smtp
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"net/smtp"
 	"strings"
 	"time"
 
-	"github.com/iconnor-code/cogo/pkg/config"
-	"github.com/iconnor-code/cogo/pkg/logger"
-
-	"crypto/tls"
+	"github.com/iconnor-code/cogo/core"
 
 	"go.uber.org/zap"
 )
 
-type EmailSmtp struct {
+type EmailSMTP struct {
 	host     string
 	port     int
 	username string
 	password string
-	logger   *logger.Logger
-
-	from string
-	to      []string
-	msg     []byte
-	subject string
+	logger   core.ILogger
 }
 
-func NewSmtp(conf *config.SmtpConfig, logger *logger.Logger) *EmailSmtp {
-	return &EmailSmtp{
-		host:     conf.Host,
-		port:     conf.Port,
-		username: conf.Username,
-		password: conf.Password,
+func NewSMTP(conf core.IConfig, logger core.ILogger) (*EmailSMTP, error) {
+	smtpConf := conf.GetSMTP()
+	return &EmailSMTP{
+		host:     smtpConf.Host,
+		port:     smtpConf.Port,
+		username: smtpConf.Username,
+		password: smtpConf.Password,
 		logger:   logger,
-	}
+	}, nil
 }
 
-func (e *EmailSmtp) SendVerifyCode(ctx context.Context, from string, to string, code string, period time.Duration) error {
-	e.from = from
-	e.to = []string{to}
-	e.subject = "您的验证码"
+func (e *EmailSMTP) SendVerifyCode(ctx context.Context, from string, to string, code string, period time.Duration) error {
+	subject := "您的验证码"
+	toList := []string{to}
 
 	body := fmt.Sprintf("您的验证码是: %s 有效期: %.0f分钟", code, period.Minutes())
-	encodedAppName := "=?UTF-8?B?" + base64.StdEncoding.EncodeToString([]byte(e.from)) + "?="
-	encodedSubject := "=?UTF-8?B?" + base64.StdEncoding.EncodeToString([]byte(e.subject)) + "?="
+	encodedAppName := "=?UTF-8?B?" + base64.StdEncoding.EncodeToString([]byte(from)) + "?="
+	encodedSubject := "=?UTF-8?B?" + base64.StdEncoding.EncodeToString([]byte(subject)) + "?="
 
-	e.msg = []byte("From: " + encodedAppName + " <" + e.username + ">\r\n" +
-		"To: " + strings.Join(e.to, ",") + "\r\n" +
+	msg := []byte("From: " + encodedAppName + " <" + e.username + ">\r\n" +
+		"To: " + strings.Join(toList, ",") + "\r\n" +
 		"Subject: " + encodedSubject + "\r\n" +
 		"MIME-Version: 1.0\r\n" +
 		"Content-Type: text/plain; charset=UTF-8\r\n" +
@@ -57,12 +51,12 @@ func (e *EmailSmtp) SendVerifyCode(ctx context.Context, from string, to string, 
 		"\r\n" +
 		body)
 
-	go e.sendEmail()
+	go e.sendEmail(from, toList, subject, msg)
 
 	return nil
 }
 
-func (e *EmailSmtp) sendEmail() {
+func (e *EmailSMTP) sendEmail(from string, to []string, subject string, msg []byte) {
 	addr := fmt.Sprintf("%s:%d", e.host, e.port)
 	tlsConfig := &tls.Config{
 		ServerName:         e.host,
@@ -70,72 +64,74 @@ func (e *EmailSmtp) sendEmail() {
 	}
 
 	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	e.log(from, to, subject, msg)
+
 	if err != nil {
-		e.log().Error("SMTP建立TLS连接失败", zap.Error(err))
+		e.logger.Error("SMTP建立TLS连接失败", zap.Error(err))
 		return
 	}
 	defer conn.Close()
 
 	client, err := smtp.NewClient(conn, e.host)
 	if err != nil {
-		e.log().Error("SMTP创建客户端失败", zap.Error(err))
+		e.logger.Error("SMTP创建客户端失败", zap.Error(err))
 		return
 	}
 	defer client.Close()
 
 	auth := smtp.PlainAuth("", e.username, e.password, e.host)
 	if err = client.Auth(auth); err != nil {
-		e.log().Error("SMTP认证失败", zap.Error(err))
+		e.logger.Error("SMTP认证失败", zap.Error(err))
 		return
 	}
 
 	if err = client.Mail(e.username); err != nil {
-		e.log().Error("SMTP设置发件人失败", zap.Error(err))
+		e.logger.Error("SMTP设置发件人失败", zap.Error(err))
 		return
 	}
 
-	for _, rcptAddr := range e.to {
+	for _, rcptAddr := range to {
 		if err = client.Rcpt(rcptAddr); err != nil {
-			e.log().Error("SMTP设置收件人失败", zap.Error(err))
+			e.logger.Error("SMTP设置收件人失败", zap.Error(err))
 			return
 		}
 	}
 
 	w, err := client.Data()
 	if err != nil {
-		e.log().Error("SMTP创建邮件内容写入器失败", zap.Error(err))
+		e.logger.Error("SMTP创建邮件内容写入器失败", zap.Error(err))
 		return
 	}
 
-	_, err = w.Write(e.msg)
+	_, err = w.Write(msg)
 	if err != nil {
-		e.log().Error("SMTP写入邮件内容失败", zap.Error(err))
+		e.logger.Error("SMTP写入邮件内容失败", zap.Error(err))
 		return
 	}
 
 	err = w.Close()
 	if err != nil {
-		e.log().Error("SMTP关闭邮件内容写入器失败", zap.Error(err))
+		e.logger.Error("SMTP关闭邮件内容写入器失败", zap.Error(err))
 		return
 	}
 
 	err = client.Quit()
 	if err != nil {
-		e.log().Error("SMTP关闭连接失败", zap.Error(err))
+		e.logger.Error("SMTP关闭连接失败", zap.Error(err))
 		return
 	}
 
-	e.log().Info("SMTP发送邮件完成")
+	e.logger.Info("SMTP发送邮件完成")
 }
 
-func (e *EmailSmtp) log() *zap.Logger {
-	return e.logger.Log().With(
-		zap.String("app_name", e.from),
+func (e *EmailSMTP) log(appName string, to []string, subject string, msg []byte) {
+	e.logger.AddGlobalFields(
+		zap.String("app_name", appName),
 		zap.String("host", e.host),
 		zap.Int("port", e.port),
 		zap.String("from", e.username),
-		zap.String("to", strings.Join(e.to, ",")),
-		zap.String("subject", e.subject),
-		zap.String("msg", string(e.msg)),
+		zap.String("to", strings.Join(to, ",")),
+		zap.String("subject", subject),
+		zap.String("msg", string(msg)),
 	)
 }
