@@ -73,12 +73,7 @@ func NewHTTPGatewayServerGroup[T core.IServer](
 
 func NewGatewayMux(ctx context.Context, config core.IConfig, registers ...GatewayRegister) (*runtime.ServeMux, error) {
 	mux := runtime.NewServeMux(
-		runtime.WithIncomingHeaderMatcher(func(header string) (string, bool) {
-			if strings.EqualFold(header, token.JwtTokenKey) {
-				return token.JwtTokenKey, true
-			}
-			return runtime.DefaultHeaderMatcher(header)
-		}),
+		runtime.WithIncomingHeaderMatcher(incomingHeaderMatcher),
 	)
 
 	endpoint, err := GRPCEndpoint(config)
@@ -92,6 +87,19 @@ func NewGatewayMux(ctx context.Context, config core.IConfig, registers ...Gatewa
 		}
 	}
 	return mux, nil
+}
+
+func incomingHeaderMatcher(header string) (string, bool) {
+	if strings.EqualFold(header, token.JwtTokenKey) {
+		return token.JwtTokenKey, true
+	}
+	if strings.EqualFold(header, "x-biz-id") {
+		return "biz_id", true
+	}
+	if strings.EqualFold(header, "x-biz-name") {
+		return "biz_name", true
+	}
+	return runtime.DefaultHeaderMatcher(header)
 }
 
 func (s *HTTPServer) Start() error {
