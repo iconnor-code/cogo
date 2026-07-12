@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/iconnor-code/cogo/cerrs"
@@ -15,7 +16,10 @@ import (
 	"github.com/google/uuid"
 )
 
-const JwtTokenKey = "access_token"
+const (
+	AuthorizationHeader = "authorization"
+	BearerScheme        = "Bearer"
+)
 
 const (
 	ClaimExpiresAt = "exp"
@@ -37,6 +41,15 @@ type Config interface {
 
 func NewJwtToken(config Config) *JwtToken {
 	return &JwtToken{config: config}
+}
+
+// ExtractBearerToken returns the JWT carried by a standard Authorization header.
+func ExtractBearerToken(value string) (string, error) {
+	parts := strings.Fields(value)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], BearerScheme) || parts[1] == "" {
+		return "", cerrs.New("authorization header must use Bearer scheme")
+	}
+	return parts[1], nil
 }
 
 func (j *JwtToken) GenerateToken(userInfo map[string]any) error {

@@ -11,6 +11,7 @@ import (
 	"github.com/iconnor-code/cogo/core"
 	cogoconfig "github.com/iconnor-code/cogo/core/impl/config"
 	"github.com/iconnor-code/cogo/core/impl/srvctx"
+	tokenpkg "github.com/iconnor-code/cogo/pkg/token"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -73,7 +74,7 @@ func TestUserInfoInterceptorSuccess(t *testing.T) {
 		"jti":        "token-1",
 	})
 
-	md := metadata.Pairs("access_token", token)
+	md := metadata.Pairs(tokenpkg.AuthorizationHeader, tokenpkg.BearerScheme+" "+token)
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
 
@@ -103,7 +104,7 @@ func TestUserInfoInterceptorSuccess(t *testing.T) {
 func TestUserInfoInterceptorInvalidToken(t *testing.T) {
 	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
 	sctx := srvctx.NewSrvCtx(&testLogger{})
-	md := metadata.Pairs("access_token", "bad-token")
+	md := metadata.Pairs(tokenpkg.AuthorizationHeader, tokenpkg.BearerScheme+" bad-token")
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
 
@@ -139,6 +140,21 @@ func TestUserInfoInterceptorMissingToken(t *testing.T) {
 	}
 }
 
+func TestUserInfoInterceptorRejectsMalformedAuthorization(t *testing.T) {
+	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
+	sctx := srvctx.NewSrvCtx(&testLogger{})
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(tokenpkg.AuthorizationHeader, "Basic credentials"))
+	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
+
+	itc := UserInfoInterceptor(conf)
+	_, err := itc(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/svc/m"}, func(context.Context, any) (any, error) {
+		return "ok", nil
+	})
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("expected Unauthenticated, got %v", status.Code(err))
+	}
+}
+
 func TestUserInfoInterceptorExpiredToken(t *testing.T) {
 	conf := &cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{AccessSecret: "secret"}}}
 	sctx := srvctx.NewSrvCtx(&testLogger{})
@@ -148,7 +164,7 @@ func TestUserInfoInterceptorExpiredToken(t *testing.T) {
 		"exp":        time.Now().Add(-time.Hour).Unix(),
 		"jti":        "token-1",
 	})
-	md := metadata.Pairs("access_token", token)
+	md := metadata.Pairs(tokenpkg.AuthorizationHeader, tokenpkg.BearerScheme+" "+token)
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
 
@@ -178,7 +194,7 @@ func TestUserInfoInterceptorRevokedToken(t *testing.T) {
 		"exp":        time.Now().Add(time.Hour).Unix(),
 		"jti":        "token-1",
 	})
-	md := metadata.Pairs("access_token", token)
+	md := metadata.Pairs(tokenpkg.AuthorizationHeader, tokenpkg.BearerScheme+" "+token)
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
 
@@ -208,7 +224,7 @@ func TestUserInfoInterceptorRevocationCheckFailure(t *testing.T) {
 		"exp":        time.Now().Add(time.Hour).Unix(),
 		"jti":        "token-1",
 	})
-	md := metadata.Pairs("access_token", token)
+	md := metadata.Pairs(tokenpkg.AuthorizationHeader, tokenpkg.BearerScheme+" "+token)
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 	ctx = context.WithValue(ctx, core.SrvCtx, sctx)
 

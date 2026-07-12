@@ -58,40 +58,44 @@ func UserInfoInterceptorWithOptions(config UserInfoConfig, whiteList []string, o
 
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
-			return nil, status.Errorf(codes.Unauthenticated, "access_token is required")
+			return nil, status.Errorf(codes.Unauthenticated, "authorization bearer token is required")
 		}
 
-		accessTokens := md.Get("access_token")
-		if len(accessTokens) == 0 || len(accessTokens[0]) == 0 {
-			return nil, status.Errorf(codes.Unauthenticated, "access_token is required")
+		authorizations := md.Get(token.AuthorizationHeader)
+		if len(authorizations) == 0 || len(authorizations[0]) == 0 {
+			return nil, status.Errorf(codes.Unauthenticated, "authorization bearer token is required")
+		}
+		accessToken, err := token.ExtractBearerToken(authorizations[0])
+		if err != nil {
+			return nil, status.Errorf(codes.Unauthenticated, "authorization bearer token is invalid")
 		}
 
 		jwtToken := token.NewJwtToken(config)
-		userInfo, err := jwtToken.ParseToken(accessTokens[0])
+		userInfo, err := jwtToken.ParseToken(accessToken)
 		if err != nil {
-			return nil, status.Errorf(codes.Unauthenticated, "access_token is invalid or expired")
+			return nil, status.Errorf(codes.Unauthenticated, "access token is invalid or expired")
 		}
 		tokenID, err := token.ClaimsString(userInfo, token.ClaimID)
 		if err != nil {
-			return nil, status.Errorf(codes.Unauthenticated, "access_token id is invalid")
+			return nil, status.Errorf(codes.Unauthenticated, "access token id is invalid")
 		}
 		if opts.revocationChecker != nil {
 			revoked, err := opts.revocationChecker.IsTokenRevoked(ctx, tokenID)
 			if err != nil {
-				return nil, status.Errorf(codes.Internal, "check access_token revocation failed")
+				return nil, status.Errorf(codes.Internal, "check access token revocation failed")
 			}
 			if revoked {
-				return nil, status.Errorf(codes.Unauthenticated, "access_token is revoked")
+				return nil, status.Errorf(codes.Unauthenticated, "access token is revoked")
 			}
 		}
 
 		userID, err := toUint32(userInfo["user_id"])
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "access_token user_id is invalid")
+			return nil, status.Errorf(codes.InvalidArgument, "access token user_id is invalid")
 		}
 		userEmail, ok := userInfo["user_email"].(string)
 		if !ok || userEmail == "" {
-			return nil, status.Errorf(codes.InvalidArgument, "access_token user_email is invalid")
+			return nil, status.Errorf(codes.InvalidArgument, "access token user_email is invalid")
 		}
 		isAdmin, _ := userInfo["is_admin"].(bool)
 

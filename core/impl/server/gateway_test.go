@@ -14,7 +14,7 @@ func TestIncomingHeaderMatcher(t *testing.T) {
 		{header: "x-biz-id", want: "biz_id"},
 		{header: "X-Biz-ID", want: "biz_id"},
 		{header: "x-biz-name", want: "biz_name"},
-		{header: "access_token", want: "access_token"},
+		{header: "Authorization", want: "authorization"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.header, func(t *testing.T) {

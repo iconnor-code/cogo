@@ -26,7 +26,7 @@
   - 从 incoming metadata 读取调用链 `biz_id` / `biz_name`。
 
 - `UserInfoInterceptor(whiteList...)`
-  - 从 `metadata[access_token]` 读取 JWT。
+  - 从 `metadata[authorization]` 读取 `Bearer <JWT>`。
   - 校验 JWT 签名、过期时间 `exp` 和 token ID `jti`。
   - 可选接入 `TokenRevocationChecker`，用于检查 token 是否已被撤销。
   - 解析后将 `user_id` / `user_email` / `is_admin` 写入 `ISrvCtx`。
@@ -72,7 +72,7 @@
 
 ## Metadata 约定
 
-- `access_token`：用户访问 token（`UserInfoInterceptor` 使用，包含 `user_id` / `user_email` / `is_admin` / `exp` / `jti`）
+- `authorization`：`Bearer <JWT>` 用户访问令牌（`UserInfoInterceptor` 使用，包含 `user_id` / `user_email` / `is_admin` / `exp` / `jti`）
 - `biz_id`：上游业务 ID，可多值
 - `biz_name`：上游业务名，可多值
 - `caller_methods`：调用方法链（循环调用检查）
@@ -81,7 +81,7 @@
 
 `UserInfoInterceptor` 负责统一处理 gRPC 用户身份：
 
-- 从 incoming metadata 读取 `access_token`。
+- 从 incoming metadata 读取 `authorization: Bearer <JWT>`。
 - 使用当前服务配置中的 JWT secret 校验 token。
 - 要求 token 包含标准过期时间 `exp` 和 token ID `jti`。
 - 可选调用撤销检查器，拒绝已退出登录或已轮换的 token。
@@ -144,7 +144,7 @@ server.NewGrpcServiceServer(config, logger, server.GrpcServiceOption{
 2. `SrvCtxInterceptor` 注入 `ISrvCtx`。
 3. `UserInfoInterceptor` 判断当前方法是否在公开方法列表中。
 4. 公开方法直接放行。
-5. 非公开方法读取 `metadata[access_token]`。
+5. 非公开方法读取 `metadata[authorization]` 中的 `Bearer <JWT>`。
 6. 校验 JWT 签名、签名算法和 `exp`。
 7. 读取 `jti`，如果配置了 `TokenRevocationChecker`，检查 token 是否已撤销。
 8. 读取 `user_id` / `user_email` / `is_admin`，写入 `ISrvCtx.UserInfo`。
@@ -152,6 +152,6 @@ server.NewGrpcServiceServer(config, logger, server.GrpcServiceOption{
 
 ### 错误语义
 
-- 缺少 `access_token`：返回 `Unauthenticated`。
+- 缺少或格式错误的 `Authorization: Bearer <JWT>`：返回 `Unauthenticated`。
 - JWT 非法、过期、缺少 `jti` 或已撤销：返回 `Unauthenticated`。
 - 撤销检查器自身失败，例如 Redis 不可用：返回 `Internal`。

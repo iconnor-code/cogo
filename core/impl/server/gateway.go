@@ -126,8 +126,8 @@ func NewGatewayMux(ctx context.Context, config core.IConfig, registers ...Gatewa
 }
 
 func incomingHeaderMatcher(header string) (string, bool) {
-	if strings.EqualFold(header, token.JwtTokenKey) {
-		return token.JwtTokenKey, true
+	if strings.EqualFold(header, token.AuthorizationHeader) {
+		return token.AuthorizationHeader, true
 	}
 	if strings.EqualFold(header, "x-biz-id") {
 		return "biz_id", true

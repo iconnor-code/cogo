@@ -36,6 +36,36 @@ func TestParseTokenSuccess(t *testing.T) {
 	}
 }
 
+func TestExtractBearerToken(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		want    string
+		wantErr bool
+	}{
+		{name: "valid", value: "Bearer jwt-value", want: "jwt-value"},
+		{name: "case insensitive scheme", value: "bearer jwt-value", want: "jwt-value"},
+		{name: "missing scheme", value: "jwt-value", wantErr: true},
+		{name: "wrong scheme", value: "Basic value", wantErr: true},
+		{name: "missing token", value: "Bearer", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ExtractBearerToken(tt.value)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil || got != tt.want {
+				t.Fatalf("ExtractBearerToken(%q) = (%q, %v), want (%q, nil)", tt.value, got, err, tt.want)
+			}
+		})
+	}
+}
+
 func TestGenerateTokenAddsTokenIDAndExpiration(t *testing.T) {
 	j := NewJwtToken(&cogoconfig.Config{Config: core.Config{JWT: core.JWTConfig{
 		AccessSecret:  "secret",
