@@ -17,7 +17,6 @@ type IConfig interface {
 	GetRegistry() RegistryConfig
 	GetSMTP() SMTPConfig
 	GetJWT() JWTConfig
-	GetAdmin() AdminConfig
 	GetOSS() OSSConfig
 	Reload() error
 }
@@ -39,7 +38,6 @@ type Config struct {
 	Registry  RegistryConfig  `mapstructure:"registry" yaml:"registry"`
 	SMTP      SMTPConfig      `mapstructure:"smtp" yaml:"smtp"`
 	JWT       JWTConfig       `mapstructure:"jwt" yaml:"jwt"`
-	Admin     AdminConfig     `mapstructure:"admin" yaml:"admin"`
 	OSS       OSSConfig       `mapstructure:"oss" yaml:"oss"`
 }
 
@@ -84,9 +82,14 @@ type MySQLPoolConfig struct {
 }
 
 type RedisConfig struct {
-	Addr     string `mapstructure:"addr" yaml:"addr"`
-	Password string `mapstructure:"password" yaml:"password"`
-	DB       int    `mapstructure:"db" yaml:"db"`
+	Addr             string   `mapstructure:"addr" yaml:"addr"`
+	Username         string   `mapstructure:"username" yaml:"username"`
+	Password         string   `mapstructure:"password" yaml:"password"`
+	DB               int      `mapstructure:"db" yaml:"db"`
+	MasterName       string   `mapstructure:"master_name" yaml:"master_name"`
+	SentinelAddrs    []string `mapstructure:"sentinel_addrs" yaml:"sentinel_addrs"`
+	SentinelUsername string   `mapstructure:"sentinel_username" yaml:"sentinel_username"`
+	SentinelPassword string   `mapstructure:"sentinel_password" yaml:"sentinel_password"`
 }
 
 type EtcdConfig struct {
@@ -131,10 +134,6 @@ type JWTConfig struct {
 	AccessSecret  string `mapstructure:"access_secret" yaml:"access_secret"`
 	AccessExpire  int    `mapstructure:"access_expire" yaml:"access_expire"`
 	RefreshExpire int    `mapstructure:"refresh_expire" yaml:"refresh_expire"`
-}
-
-type AdminConfig struct {
-	UserIDs []int `mapstructure:"user_ids" yaml:"user_ids"`
 }
 
 type OSSConfig struct {

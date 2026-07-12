@@ -96,8 +96,6 @@ func (ct *Config) GetSMTP() core.SMTPConfig { return ct.SMTP }
 
 func (ct *Config) GetJWT() core.JWTConfig { return ct.JWT }
 
-func (ct *Config) GetAdmin() core.AdminConfig { return ct.Admin }
-
 func (ct *Config) GetOSS() core.OSSConfig { return ct.OSS }
 
 func (ct *Config) Reload() error {
@@ -134,7 +132,12 @@ func (ct *Config) loadFromFile() error {
 func (ct *Config) applyEnvOverrides() {
 	setStringFromEnv(&ct.MySQL.DSN, "MYSITE_MYSQL_DSN")
 	setStringFromEnv(&ct.Redis.Addr, "MYSITE_REDIS_ADDR")
+	setStringFromEnv(&ct.Redis.Username, "MYSITE_REDIS_USERNAME")
 	setStringFromEnv(&ct.Redis.Password, "MYSITE_REDIS_PASSWORD")
+	setStringFromEnv(&ct.Redis.MasterName, "MYSITE_REDIS_MASTER_NAME")
+	setStringSliceFromEnv(&ct.Redis.SentinelAddrs, "MYSITE_REDIS_SENTINEL_ADDRS")
+	setStringFromEnv(&ct.Redis.SentinelUsername, "MYSITE_REDIS_SENTINEL_USERNAME")
+	setStringFromEnv(&ct.Redis.SentinelPassword, "MYSITE_REDIS_SENTINEL_PASSWORD")
 	setStringFromEnv(&ct.SMTP.Host, "MYSITE_SMTP_HOST")
 	setStringFromEnv(&ct.SMTP.Username, "MYSITE_SMTP_USERNAME")
 	setStringFromEnv(&ct.SMTP.Password, "MYSITE_SMTP_PASSWORD")
@@ -150,4 +153,20 @@ func setStringFromEnv(target *string, key string) {
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		*target = value
 	}
+}
+
+func setStringSliceFromEnv(target *[]string, key string) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return
+	}
+
+	values := strings.Split(value, ",")
+	result := make([]string, 0, len(values))
+	for _, item := range values {
+		if item = strings.TrimSpace(item); item != "" {
+			result = append(result, item)
+		}
+	}
+	*target = result
 }

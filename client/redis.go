@@ -14,11 +14,25 @@ type RedisClientOption func(client *RedisClient) error
 
 func NewRedisClient(config core.IConfig) (*RedisClient, error) {
 	redisConf := config.GetRedis()
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     redisConf.Addr,
-		Password: redisConf.Password,
-		DB:       redisConf.DB,
-	})
+	var redisClient *redis.Client
+	if redisConf.MasterName != "" && len(redisConf.SentinelAddrs) > 0 {
+		redisClient = redis.NewFailoverClient(&redis.FailoverOptions{
+			MasterName:       redisConf.MasterName,
+			SentinelAddrs:    redisConf.SentinelAddrs,
+			SentinelUsername: redisConf.SentinelUsername,
+			SentinelPassword: redisConf.SentinelPassword,
+			Username:         redisConf.Username,
+			Password:         redisConf.Password,
+			DB:               redisConf.DB,
+		})
+	} else {
+		redisClient = redis.NewClient(&redis.Options{
+			Addr:     redisConf.Addr,
+			Username: redisConf.Username,
+			Password: redisConf.Password,
+			DB:       redisConf.DB,
+		})
+	}
 
 	return &RedisClient{
 		Client: redisClient,

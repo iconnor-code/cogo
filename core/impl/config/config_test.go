@@ -61,7 +61,15 @@ mysql:
     max_lifetime: 60
 redis:
   addr: 127.0.0.1:6379
+  username: app
+  password: redis-secret
   db: 1
+  master_name: mymaster
+  sentinel_addrs:
+    - sentinel-0:26379
+    - sentinel-1:26379
+  sentinel_username: sentinel-app
+  sentinel_password: sentinel-secret
 etcd:
   endpoints:
     - 127.0.0.1:2379
@@ -111,6 +119,12 @@ oss:
 	if conf.MySQL.Pool.MaxOpenConns != 10 {
 		t.Fatalf("mysql max open conns = %d, want 10", conf.MySQL.Pool.MaxOpenConns)
 	}
+	if conf.Redis.MasterName != "mymaster" || len(conf.Redis.SentinelAddrs) != 2 || conf.Redis.SentinelAddrs[1] != "sentinel-1:26379" {
+		t.Fatalf("redis sentinel config = %+v", conf.Redis)
+	}
+	if conf.Redis.Username != "app" || conf.Redis.SentinelUsername != "sentinel-app" {
+		t.Fatalf("redis usernames = data:%q sentinel:%q", conf.Redis.Username, conf.Redis.SentinelUsername)
+	}
 	if conf.Registry.HealthCheck.Interval != "3s" {
 		t.Fatalf("registry health check interval = %q, want 3s", conf.Registry.HealthCheck.Interval)
 	}
@@ -126,9 +140,9 @@ func TestLoadSupportsBusinessConfigEmbedding(t *testing.T) {
 	type businessConfig struct {
 		Config `mapstructure:",squash"`
 
-		Admin struct {
-			UserIDs []int `mapstructure:"user_ids" yaml:"user_ids"`
-		} `mapstructure:"admin" yaml:"admin"`
+		Moderation struct {
+			ReviewerIDs []int `mapstructure:"reviewer_ids" yaml:"reviewer_ids"`
+		} `mapstructure:"moderation" yaml:"moderation"`
 	}
 
 	dir := t.TempDir()
@@ -137,8 +151,8 @@ func TestLoadSupportsBusinessConfigEmbedding(t *testing.T) {
 mode: debug
 grpc:
   listen: :10000
-admin:
-  user_ids:
+moderation:
+  reviewer_ids:
     - 1
     - 2
 `)
@@ -154,8 +168,8 @@ admin:
 	if conf.GRPC.Listen != ":10000" {
 		t.Fatalf("grpc listen = %q, want :10000", conf.GRPC.Listen)
 	}
-	if len(conf.Admin.UserIDs) != 2 || conf.Admin.UserIDs[0] != 1 || conf.Admin.UserIDs[1] != 2 {
-		t.Fatalf("admin user ids = %+v, want [1 2]", conf.Admin.UserIDs)
+	if len(conf.Moderation.ReviewerIDs) != 2 || conf.Moderation.ReviewerIDs[0] != 1 || conf.Moderation.ReviewerIDs[1] != 2 {
+		t.Fatalf("reviewer ids = %+v, want [1 2]", conf.Moderation.ReviewerIDs)
 	}
 }
 
@@ -184,6 +198,11 @@ oss:
 	t.Setenv("MYSITE_OSS_BASE_URL", "http://example.com/mysite")
 	t.Setenv("MYSITE_MYSQL_DSN", "env-dsn")
 	t.Setenv("MYSITE_REDIS_ADDR", "redis:6379")
+	t.Setenv("MYSITE_REDIS_USERNAME", "redis-user")
+	t.Setenv("MYSITE_REDIS_MASTER_NAME", "env-master")
+	t.Setenv("MYSITE_REDIS_SENTINEL_ADDRS", "sentinel-0:26379, sentinel-1:26379")
+	t.Setenv("MYSITE_REDIS_SENTINEL_USERNAME", "sentinel-user")
+	t.Setenv("MYSITE_REDIS_SENTINEL_PASSWORD", "sentinel-password")
 	t.Setenv("MYSITE_JWT_ACCESS_SECRET", "jwt-secret")
 
 	conf, err := NewConfig(WithFilePath(configPath))
@@ -201,5 +220,14 @@ oss:
 	}
 	if conf.MySQL.DSN != "env-dsn" || conf.Redis.Addr != "redis:6379" || conf.JWT.AccessSecret != "jwt-secret" {
 		t.Fatalf("secret overrides not applied: mysql=%q redis=%q", conf.MySQL.DSN, conf.Redis.Addr)
+	}
+	if conf.Redis.Username != "redis-user" || conf.Redis.MasterName != "env-master" {
+		t.Fatalf("redis env overrides = %+v", conf.Redis)
+	}
+	if len(conf.Redis.SentinelAddrs) != 2 || conf.Redis.SentinelAddrs[1] != "sentinel-1:26379" {
+		t.Fatalf("redis sentinel addrs = %+v", conf.Redis.SentinelAddrs)
+	}
+	if conf.Redis.SentinelUsername != "sentinel-user" || conf.Redis.SentinelPassword != "sentinel-password" {
+		t.Fatalf("redis sentinel credentials not overridden: %+v", conf.Redis)
 	}
 }
