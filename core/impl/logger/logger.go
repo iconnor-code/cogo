@@ -69,32 +69,33 @@ func (l *Logger) AddGlobalFields(fields ...any) {
 
 func (l *Logger) init() error {
 	fileEncoder := getFileEncoder()
-	stdoutEncoder := getStdoutEncoder()
 
 	if l.conf == nil {
 		return cerrs.New("logger config not found")
 	}
-	infoWriter, err := getInfoLogFileWriter(l.conf)
-	if err != nil {
-		return err
+	coreArr := []zapcore.Core{
+		zapcore.NewCore(fileEncoder, getStdoutWriter(), zap.DebugLevel),
 	}
-	errWriter, err := getErrLogFileWriter(l.conf)
-	if err != nil {
-		return err
-	}
+	if l.conf.GetLogger().FilePath != "" {
+		infoWriter, err := getInfoLogFileWriter(l.conf)
+		if err != nil {
+			return err
+		}
+		errWriter, err := getErrLogFileWriter(l.conf)
+		if err != nil {
+			return err
+		}
 
-	errLevelEnabler := zap.LevelEnablerFunc(func(level zapcore.Level) bool {
-		return level >= zap.ErrorLevel
-	})
-	infoLevelEnabler := zap.LevelEnablerFunc(func(level zapcore.Level) bool {
-		return level < zap.ErrorLevel
-	})
-
-	infoCore := zapcore.NewCore(fileEncoder, infoWriter, infoLevelEnabler)
-	errCore := zapcore.NewCore(fileEncoder, errWriter, errLevelEnabler)
-	coreArr := []zapcore.Core{infoCore, errCore}
-	if l.conf.GetMode() == "debug" {
-		coreArr = append(coreArr, zapcore.NewCore(stdoutEncoder, getStdoutWriter(), zap.DebugLevel))
+		errLevelEnabler := zap.LevelEnablerFunc(func(level zapcore.Level) bool {
+			return level >= zap.ErrorLevel
+		})
+		infoLevelEnabler := zap.LevelEnablerFunc(func(level zapcore.Level) bool {
+			return level < zap.ErrorLevel
+		})
+		coreArr = append(coreArr,
+			zapcore.NewCore(fileEncoder, infoWriter, infoLevelEnabler),
+			zapcore.NewCore(fileEncoder, errWriter, errLevelEnabler),
+		)
 	}
 
 	l.logger = zap.New(zapcore.NewTee(coreArr...), zap.AddCaller(), zap.AddCallerSkip(1))
@@ -129,15 +130,6 @@ func getFileEncoder() zapcore.Encoder {
 	encodeConfig.EncodeLevel = zapcore.CapitalLevelEncoder
 	encodeConfig.EncodeCaller = zapcore.FullCallerEncoder
 	return zapcore.NewJSONEncoder(encodeConfig)
-}
-
-func getStdoutEncoder() zapcore.Encoder {
-	encodeConfig := zap.NewDevelopmentEncoderConfig()
-	encodeConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	encodeConfig.TimeKey = "time"
-	encodeConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	encodeConfig.EncodeCaller = zapcore.FullCallerEncoder
-	return zapcore.NewConsoleEncoder(encodeConfig)
 }
 
 func getLogFileConfig(conf core.IConfig, filename string) (*lumberjack.Logger, error) {

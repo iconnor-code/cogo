@@ -23,6 +23,7 @@ metrics:
   listen: ":9090"
 
 logger:
+  # 可选；未配置或设为空时仅输出 stdout
   file_path: "./logs"
   max_size: 100
   max_age: 7
@@ -77,7 +78,8 @@ smtp:
 
 ## 配置项说明
 
-- `mode`：日志模式；`debug` 时会额外输出到 stdout。
+- `mode`：运行模式。
+- `logger.file_path`：可选。日志始终输出到 stdout；配置此目录时，额外将低于 `error` 级别的日志轮转写入 `info.log`，将 `error` 及以上日志轮转写入 `error.log`。未配置或为空时禁用文件轮转。
 - `grpc.listen`：gRPC 监听地址。
 - `http.listen`：HTTP/gateway 监听地址。
 - `http.ssl`：可选；启用 https 时需要 `cert_file` 与 `key_file`。
