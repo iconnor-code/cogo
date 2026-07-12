@@ -32,6 +32,8 @@ type Pool struct {
 	closed bool
 }
 
+var _ core.IRPCClient = (*Pool)(nil)
+
 // NewPool builds the configured discovery strategy. An empty provider is
 // allowed so services without downstream dependencies do not need discovery.
 func NewPool(config core.IConfig, logger core.ILogger) (*Pool, error) {
